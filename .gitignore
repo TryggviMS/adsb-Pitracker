@@ -1,0 +1,24 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs
+*.log
+
+# Runtime aircraft data
+web/static/data/
+html/data/
+
+# Postgres data (NEVER commit this)
+postgres/pg_data/
+db/data/
+
+# OS / Editor
+.DS_Store
+.vscode/
