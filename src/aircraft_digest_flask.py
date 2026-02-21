@@ -57,6 +57,33 @@ def live_aircraft():
             "generated_at": time.time(),
             "aircraft": aircraft
         })
-
+@app.route("/live_paths")
+def live_paths():
+    """Return current live flight paths as GeoJSON."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                hex,
+                flight,
+                category,
+                ST_AsGeoJSON(geom) AS geom
+            FROM public.aircraft_paths_live;
+        """)
+        features = []
+        for row in cur.fetchall():
+            hex, flight, category, geom_json = row
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "hex": hex,
+                    "flight": flight.strip(),
+                    "category": category
+                },
+                "geometry": json.loads(geom_json)
+            })
+        return jsonify({
+            "type": "FeatureCollection",
+            "features": features
+        })
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
