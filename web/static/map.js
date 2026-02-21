@@ -3,10 +3,18 @@
 // -----------------------------
 const RKV = { lat: 64.1300, lon: -21.9400 };
 const KEF = { lat: 63.9850, lon: -22.6056 };
-const CIRCLE_CENTER = { lat: 64.111144, lon: -22.018662 };
+const CIRCLE_CENTER = { lat: 64.111092, lon: -22.018843 };
 
 window.map = L.map("map").setView([RKV.lat, RKV.lon], 10);
 const map = window.map;
+
+
+// Midnight toggle
+// Midnight toggle (single source of truth = window.PATHS_MODE)
+window.PATHS_MODE = window.PATHS_MODE || "live"; // "live" | "midnight"
+
+const PATHS_URL_LIVE = "http://192.168.0.13:5000/live_paths";
+const PATHS_URL_MIDNIGHT = "http://192.168.0.13:5000/paths_since_midnight";
 
 window.addEventListener("resize", () => map.invalidateSize());
 
@@ -194,7 +202,7 @@ const aircraftState = {};
 const STALE_AFTER = 10;
 
 const liveIconURL = "icons/airplane.png";
-const unknownIconURL = "icons/unknown.svg";
+const unknownIconURL = "icons/unknown2.svg";
 const airplaneIconURL = "icons/airplane.png";
 const airplaneIconCache = {};
 
@@ -269,31 +277,33 @@ function addGradientLine(feature) {
 
 async function updateLivePaths() {
   try {
-    const response = await fetch("http://192.168.0.13:5000/live_paths", {
-      cache: "no-store",
-    });
+    const mode = window.PATHS_MODE || "live";
+    const url = mode === "midnight" ? PATHS_URL_MIDNIGHT : PATHS_URL_LIVE;
+
+    const response = await fetch(url, { cache: "no-store" });
     const geojson = await response.json();
 
     // Remove previous layer(s)
-    if (window.livePathsLayer) {
+    if (Array.isArray(window.livePathsLayer)) {
       window.livePathsLayer.forEach((layer) => map.removeLayer(layer));
     }
+    window.livePathsLayer = [];
 
     // Create new segments
-    const newLayers = [];
     (geojson.features || []).forEach((feature) => {
       const segs = addGradientLine(feature);
       segs.forEach((s) => {
         s.addTo(map);
-        newLayers.push(s);
+        window.livePathsLayer.push(s);
       });
     });
-
-    window.livePathsLayer = newLayers;
   } catch (err) {
     console.error("Failed to fetch live paths:", err);
   }
 }
+
+// Make callable from HTML button script
+window.updateLivePaths = updateLivePaths;
 
 // Initial load + refresh
 updateLivePaths();
