@@ -61,10 +61,11 @@ sudo docker logs -f adsb-web
 
 # 3. PostgreSQL
 
-## Start Database
+## Start Database (using root level env file)
 
 cd docker/postgres
-sudo docker compose up -d
+sudo docker compose --env-file ../../.env up -d
+
 
 Return to project root:
 
