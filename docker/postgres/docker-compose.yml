@@ -2,16 +2,16 @@ services:
   db:
     image: imresamu/postgis:16-3.4
     container_name: postgis_db
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: sjavargata20
-      POSTGRES_DB: spatial_db
+      POSTGRES_USER: ${PGUSER}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+      POSTGRES_DB: ${PGDATABASE}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql
+      - ./init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
     shm_size: 1g
 
 volumes:
