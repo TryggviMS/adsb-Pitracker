@@ -5,6 +5,7 @@
     {"hex":"test_nopos","mlat":[],"tisb":[],"messages":168,"seen":0.5,"rssi":-23.6}
   ]
 }
-/*sudo chown -R trygg:trygg /home/trygg/Documents/adsb-Pitracker/web/static/data
+/*
+sudo chown -R trygg:trygg /home/trygg/Documents/adsb-Pitracker/web/static/data
 sudo chmod -R 775 /home/trygg/Documents/adsb-Pitracker/web/static/data
 */

@@ -5,11 +5,12 @@ Single source of truth for time-based lifecycle:
 - ARCHIVE_TIMEOUT_SECONDS controls everything
 """
 
-import os
 import json
+import os
 import time
-import psycopg
 from pathlib import Path
+
+import psycopg
 
 # ============================================================
 # CONFIG – SINGLE SOURCE OF TRUTH
@@ -18,11 +19,10 @@ from pathlib import Path
 POLL_SECONDS = 2
 
 # 🔥 ONE knob controls ALL archiving & pruning (seconds)
-ARCHIVE_TIMEOUT_SECONDS = 30   # e.g. 30 seconds
+ARCHIVE_TIMEOUT_SECONDS = 30  # e.g. 30 seconds
 
 # Only append to path if position is fresh
 MAX_SEEN_POS_SECONDS_FOR_LINE = 30
-
 
 # --- Aircraft JSON location ---
 DEFAULT_DATA_FILE = Path.cwd() / "web" / "static" / "data" / "aircraft.json"
@@ -35,9 +35,11 @@ DB_PASS = os.environ["PGPASSWORD"]
 DB_HOST = os.environ.get("PGHOST", "localhost")
 DB_PORT = os.environ.get("PGPORT", "5432")
 
-conn = psycopg.connect(
+DB_DSN = (
     f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}"
 )
+
+conn = psycopg.connect(DB_DSN)
 conn.autocommit = False
 
 
@@ -55,7 +57,8 @@ def _safe_float(v, default=0.0) -> float:
 def read_aircraft_file():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f).get("aircraft", [])
+            payload = json.load(f)
+        return payload.get("aircraft", [])
     except Exception as e:
         print("read_aircraft_file failed:", repr(e))
         return []
@@ -101,7 +104,7 @@ def upsert_live_aircraft(cur, msg):
 
     seen = _safe_float(msg.get("seen"), 0.0)
 
-    # ✅ Keep aircraft_live strictly "recent"
+    # Keep aircraft_live strictly "recent"
     if seen > ARCHIVE_TIMEOUT_SECONDS:
         return
 
@@ -152,6 +155,7 @@ def upsert_live_aircraft(cur, msg):
         },
     )
 
+
 def upsert_live_path(cur, msg):
     lat = msg.get("lat")
     lon = msg.get("lon")
@@ -159,7 +163,7 @@ def upsert_live_path(cur, msg):
         return
 
     seen = _safe_float(msg.get("seen"), 0.0)
-    seen_pos = _safe_float(msg.get("seen_pos"), 999)
+    seen_pos = _safe_float(msg.get("seen_pos"), 999.0)
 
     if seen_pos > MAX_SEEN_POS_SECONDS_FOR_LINE:
         return
@@ -220,6 +224,7 @@ def archive_and_prune(cur):
     if moved:
         print(f"  → archived {len(moved)} flight paths")
 
+    # Remove archived paths from live
     cur.execute(
         f"""
         DELETE FROM public.aircraft_paths_live
@@ -259,10 +264,9 @@ def run():
 
                 try:
                     insert_position(cur, ac)
-                    upsert_live_aircraft(cur, ac)   # writes even if lat/lon missing
-                    upsert_live_path(cur, ac)       # only writes if lat/lon exists
+                    upsert_live_aircraft(cur, ac)  # writes even if lat/lon missing
+                    upsert_live_path(cur, ac)      # only writes if lat/lon exists
                     cur.execute("RELEASE SAVEPOINT sp_aircraft")
-
                 except Exception as e:
                     print("DB error:", repr(e), "hex=", hex_)
                     # Roll back only this aircraft, not the whole loop
@@ -272,7 +276,6 @@ def run():
 
             archive_and_prune(cur)
             conn.commit()
-
             time.sleep(POLL_SECONDS)
 
 
