@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="is">
 <head>
   <meta charset="UTF-8">
-  <title>Live ADS-B Map (Optimized)</title>
+  <title>ADS-B Flugvélakort í rauntíma</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Leaflet CSS -->
@@ -15,18 +15,60 @@
   <meta http-equiv="Expires" content="0" />
 </head>
 <body>
-  <div id="map"></div>
+  <div id="app">
 
-  <div id="sidebar">
-    <h3>Flugvélar undir eftirliti</h3>
-    <ul id="aircraft-list"></ul>
-  </div>
+    <header id="header">
+      <div class="header-left">
+        ✈️ ADS-B Flugvélavöktun
+      </div>
+
+      <div class="header-right">
+        <button id="sidebar-toggle" class="icon-btn" type="button" aria-label="Sýna/fela lista">
+          ☰
+        </button>
+
+        <div id="live-status" aria-label="Rauntímastaða">
+          <span class="live-dot"></span>
+          <span class="live-text">LIVE</span>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <div id="map"></div>
+
+      <aside id="sidebar">
+        <h3>Flugvélar undir eftirliti</h3>
+        <ul id="aircraft-list"></ul>
+      </aside>
+    </main>
+
+    <footer id="footer">
+      <div class="footer-left">
+        Staðsetning móttakara: Sjávargöta 20
+      </div>
+      <div class="footer-right">
+        ADS-B gögn · Staðbundinn móttakari
+      </div>
+    </footer>
+
+  </div> <!-- ✅ CLOSE #app -->
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- RotatedMarker plugin -->
   <script src="https://rawcdn.githack.com/bbecquet/Leaflet.RotatedMarker/master/leaflet.rotatedMarker.js"></script>
-  <!-- Map logic -->
   <script src="map.js"></script>
+
+  <script>
+    const btn = document.getElementById('sidebar-toggle');
+    btn.addEventListener('click', () => {
+      document.body.classList.toggle('sidebar-open');
+
+      // Leaflet needs this when layout changes
+      if (window.map && typeof window.map.invalidateSize === 'function') {
+        setTimeout(() => window.map.invalidateSize(), 150);
+      }
+    });
+  </script>
 </body>
 </html>

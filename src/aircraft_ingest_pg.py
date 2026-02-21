@@ -159,6 +159,67 @@ def archive_completed_flights(cur, timeout_minutes=3):
         )
 
 
+# ============================================================
+# 2) PYTHON INGESTION WORKER UPDATE
+# Add this function + call it in the loop
+# ============================================================
+
+def upsert_live_aircraft(cur, msg):
+    """Upsert latest aircraft state (for map markers + sidebar)."""
+    if not msg.get("hex"):
+        return
+
+    lat = msg.get("lat")
+    lon = msg.get("lon")
+
+    geom_sql = (
+        f"ST_SetSRID(ST_MakePoint({lon}, {lat}), 4326)"
+        if lat is not None and lon is not None
+        else "NULL"
+    )
+
+    cur.execute(
+        f"""
+        INSERT INTO public.aircraft_live (
+            hex, flight, category, last_seen,
+            lat, lon, alt_baro, track,
+            geom, data
+        )
+        VALUES (
+            %(hex)s, %(flight)s, %(category)s, now(),
+            %(lat)s, %(lon)s, %(alt_baro)s, %(track)s,
+            {geom_sql}, %(data)s::jsonb
+        )
+        ON CONFLICT (hex)
+        DO UPDATE SET
+            flight    = EXCLUDED.flight,
+            category  = EXCLUDED.category,
+            last_seen = now(),
+            lat       = EXCLUDED.lat,
+            lon       = EXCLUDED.lon,
+            alt_baro  = EXCLUDED.alt_baro,
+            track     = EXCLUDED.track,
+            geom      = EXCLUDED.geom,
+            data      = EXCLUDED.data;
+        """,
+        {
+            "hex": msg.get("hex"),
+            "flight": (msg.get("flight") or "").strip(),
+            "category": msg.get("category"),
+            "lat": lat,
+            "lon": lon,
+            "alt_baro": msg.get("alt_baro"),
+            "track": msg.get("track"),
+            "data": json.dumps(msg),
+        },
+    )
+
+# ---- in your loop, call it here ----
+# for aircraft in aircraft_list:
+#     insert_position(cur, aircraft)
+#     upsert_live_aircraft(cur, aircraft)   # ✅ ADD THIS
+#     upsert_live_path(cur, aircraft)
+
 def run():
     """Main polling loop with debug prints."""
     with conn.cursor() as cur:
@@ -171,8 +232,8 @@ def run():
 
             for aircraft in aircraft_list:
                 insert_position(cur, aircraft)
+                upsert_live_aircraft(cur, aircraft)   # ✅ ADD THIS LINE
                 upsert_live_path(cur, aircraft)
-
             archive_completed_flights(cur)
 
             conn.commit()
