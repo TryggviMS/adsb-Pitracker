@@ -18,31 +18,44 @@
   <div id="app">
 
     <header id="header">
-      <div class="header-left">
-        ✈️ ADS-B Flugvélavöktun
-      </div>
 
-      <div class="header-right">
-        <button id="sidebar-toggle" class="icon-btn" type="button" aria-label="Sýna/fela lista">
-          ☰
-        </button>
-<button id="paths-toggle" class="pill-btn" type="button" aria-pressed="false">
-  🕛 Frá miðnætti
+  <div class="header-left">
+    ✈️ ADS-B merkjamóttaka
+  </div>
+
+<div id="global-stats" class="header-center" aria-label="Tölfræði">
+  <span class="stat">Alls: <b id="stat-total">–</b></span>
+  <span class="sep">│</span>
+  <span class="stat">Í vikunni: <b id="stat-week">–</b></span>
+  <span class="sep">│</span>
+  <span class="stat">Í dag: <b id="stat-today">–</b></span>
+  <span class="sep">│</span>
+  <span class="stat">Síðasta klst: <b id="stat-hour">–</b></span>
+</div>
+
+  <div class="header-right">
+<button id="sidebar-toggle" class="icon-btn" type="button" aria-label="Sýna/fela lista">
+  ☰
 </button>
-        <div id="live-status" aria-label="Rauntímastaða">
-          <span class="live-dot"></span>
-          <span class="live-text">LIVE</span>
-        </div>
-      </div>
-    </header>
+    <button id="paths-toggle" class="pill-btn" type="button">
+      🕛 Frá miðnætti
+    </button>
+
+    <div id="live-status">
+      <span class="live-dot"></span>
+      <span class="live-text">LIVE</span>
+    </div>
+  </div>
+
+</header>
 
     <main id="main">
       <div id="map"></div>
 
-      <aside id="sidebar">
-        <h3>Flugvélar undir eftirliti</h3>
-        <ul id="aircraft-list"></ul>
-      </aside>
+<aside id="sidebar">
+  <h3 id="sidebar-title">Flugvélar undir eftirliti</h3>
+  <ul id="aircraft-list"></ul>
+</aside>
     </main>
 
     <footer id="footer">

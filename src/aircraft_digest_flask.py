@@ -32,22 +32,26 @@ def live_aircraft():
         cur.execute(
             """
             SELECT
-              hex,
-              flight,
-              category,
-              lat,
-              lon,
-              alt_baro,
-              track,
-              EXTRACT(EPOCH FROM last_seen) AS last_seen_epoch
-            FROM public.aircraft_live
-            WHERE last_seen > now() - interval '60 seconds'
-            ORDER BY last_seen DESC;
+            a.hex,
+            a.flight,
+            a.category,
+            a.lat,
+            a.lon,
+            a.alt_baro,
+            a.track,
+            EXTRACT(EPOCH FROM a.last_seen) AS last_seen_epoch,
+            p.total_length_km
+            FROM public.aircraft_live a
+            LEFT JOIN public.aircraft_paths_live p
+            ON p.hex = a.hex
+            AND p.flight = a.flight
+            WHERE a.last_seen > now() - interval '60 seconds'
+            ORDER BY a.last_seen DESC;
             """
         )
 
         aircraft = []
-        for hex_, flight, category, lat, lon, alt_baro, track, last_seen_epoch in cur.fetchall():
+        for hex_, flight, category, lat, lon, alt_baro, track, last_seen_epoch, total_length_km in cur.fetchall():
             aircraft.append(
                 {
                     "hex": hex_,
@@ -58,6 +62,7 @@ def live_aircraft():
                     "alt_baro": alt_baro,
                     "track": track,
                     "last_seen": last_seen_epoch,
+                    "total_length_km": total_length_km
                 }
             )
 
@@ -133,12 +138,13 @@ def paths_since_midnight():
               WHERE last_seen >= midnight.t0
             )
             SELECT
-              hex,
-              flight,
-              category,
-              MIN(start_time) AS start_time,
-              MAX(end_time)   AS end_time,
-              ST_AsGeoJSON(ST_LineMerge(ST_Collect(geom))) AS geom
+                hex,
+                flight,
+                category,
+                MIN(start_time) AS start_time,
+                MAX(end_time)   AS end_time,
+                ST_AsGeoJSON(ST_LineMerge(ST_Collect(geom))) AS geom,
+                ROUND((ST_Length(ST_LineMerge(ST_Collect(geom))::geography) / 1000.0)::numeric, 1)::double precision AS total_length_km
             FROM src
             WHERE geom IS NOT NULL
             GROUP BY hex, flight, category
@@ -147,7 +153,7 @@ def paths_since_midnight():
         )
 
         features = []
-        for hex_, flight, category, start_time, end_time, geom_json in cur.fetchall():
+        for hex_, flight, category, start_time, end_time, geom_json, total_length_km in cur.fetchall():
             if not geom_json:
                 continue
 
@@ -160,6 +166,7 @@ def paths_since_midnight():
                         "category": category,
                         "start_time": start_time.isoformat() if start_time else None,
                         "end_time": end_time.isoformat() if end_time else None,
+                        "total_length_km": total_length_km
                     },
                     "geometry": json.loads(geom_json),
                 }
