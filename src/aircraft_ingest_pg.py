@@ -1,8 +1,8 @@
 """
 ADS-B ingestion worker reading dump1090 aircraft.json.
 
-Reads file repeatedly and processes aircraft list.
-Prints debug info into console for each step.
+Single source of truth for time-based lifecycle:
+- ARCHIVE_TIMEOUT_SECONDS controls everything
 """
 
 import os
@@ -11,19 +11,29 @@ import time
 import psycopg
 from pathlib import Path
 
-# --- Config (env first, then defaults) ------------------------
+# ============================================================
+# CONFIG – SINGLE SOURCE OF TRUTH
+# ============================================================
+
+POLL_SECONDS = 2
+
+# 🔥 ONE knob controls ALL archiving & pruning (seconds)
+ARCHIVE_TIMEOUT_SECONDS = 30   # e.g. 30 seconds
+
+# Only append to path if position is fresh
+MAX_SEEN_POS_SECONDS_FOR_LINE = 30
+
 
 # --- Aircraft JSON location ---
 DEFAULT_DATA_FILE = Path.cwd() / "web" / "static" / "data" / "aircraft.json"
-DATA_FILE = Path(os.environ.get("ADSB_DATA_FILE", DEFAULT_DATA_FILE))
+DATA_FILE = Path(os.environ.get("ADSB_DATA_FILE", str(DEFAULT_DATA_FILE)))
 
-# --- Database (required) ---
+# --- Database ---
 DB_NAME = os.environ["PGDATABASE"]
 DB_USER = os.environ["PGUSER"]
 DB_PASS = os.environ["PGPASSWORD"]
 DB_HOST = os.environ.get("PGHOST", "localhost")
 DB_PORT = os.environ.get("PGPORT", "5432")
-
 
 conn = psycopg.connect(
     f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}"
@@ -31,25 +41,36 @@ conn = psycopg.connect(
 conn.autocommit = False
 
 
-def read_aircraft_file():
-    """Read aircraft.json safely. Returns list of aircraft dicts."""
+# ============================================================
+# HELPERS
+# ============================================================
+
+def _safe_float(v, default=0.0) -> float:
     try:
-        with DATA_FILE.open("r") as f:
-            data = json.load(f)
-            return data.get("aircraft", [])
+        return float(v)
     except Exception:
-        # File may be mid-write; skip this cycle
+        return float(default)
+
+
+def read_aircraft_file():
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f).get("aircraft", [])
+    except Exception as e:
+        print("read_aircraft_file failed:", repr(e))
         return []
 
 
+# ============================================================
+# DB WRITES
+# ============================================================
+
 def insert_position(cur, msg):
-    """Insert raw ADS-B message into history table."""
     lat = msg.get("lat")
     lon = msg.get("lon")
 
-    # Build geom in SQL only if lat/lon exist
     geom_sql = (
-        f"ST_SetSRID(ST_MakePoint({lon}, {lat}), 4326)"
+        "ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)"
         if lat is not None and lon is not None
         else "NULL"
     )
@@ -57,123 +78,38 @@ def insert_position(cur, msg):
     cur.execute(
         f"""
         INSERT INTO public.aircraft_positions_history (
-            hex,
-            flight,
-            observed_at,
-            geom,
-            data
+            hex, flight, observed_at, geom, data
         )
         VALUES (
-            %(hex)s,
-            %(flight)s,
-            now(),
-            {geom_sql},
-            %(data)s::jsonb
+            %(hex)s, %(flight)s, now(), {geom_sql}, %(data)s::jsonb
         );
         """,
         {
             "hex": msg.get("hex"),
             "flight": (msg.get("flight") or "").strip(),
+            "lat": lat,
+            "lon": lon,
             "data": json.dumps(msg),
         },
     )
-    print(f"  → inserted into aircraft_positions_history (hex={msg.get('hex')})")
 
-
-def upsert_live_path(cur, msg):
-    """Insert or append to live flight line if coordinates exist."""
-    if msg.get("lat") is None or msg.get("lon") is None:
-        return
-
-    cur.execute(
-        """
-        INSERT INTO public.aircraft_paths_live (
-            hex,
-            flight,
-            category,
-            start_time,
-            last_seen,
-            geom
-        )
-        VALUES (
-            %(hex)s,
-            %(flight)s,
-            %(category)s,
-            now(),
-            now(),
-            ST_SetSRID(ST_MakeLine(ARRAY[ST_MakePoint(%(lon)s, %(lat)s)]), 4326)
-        )
-        ON CONFLICT (hex, flight)
-        DO UPDATE
-        SET
-            geom = ST_AddPoint(
-                aircraft_paths_live.geom,
-                ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)
-            ),
-            last_seen = now();
-        """,
-        {
-            "hex": msg.get("hex"),
-            "flight": (msg.get("flight") or "").strip(),
-            "category": msg.get("category"),
-            "lat": msg.get("lat"),
-            "lon": msg.get("lon"),
-        },
-    )
-    print(f"  → upserted into aircraft_paths_live (hex={msg.get('hex')})")
-
-
-def archive_completed_flights(cur, timeout_minutes=3):
-    """Move inactive flights from live to history table."""
-    cur.execute(
-        f"""
-        INSERT INTO public.aircraft_paths_history (
-            hex,
-            flight,
-            category,
-            start_time,
-            end_time,
-            geom
-        )
-        SELECT
-            hex,
-            flight,
-            category,
-            start_time,
-            last_seen,
-            geom
-        FROM public.aircraft_paths_live
-        WHERE last_seen < now() - interval '{timeout_minutes} minutes'
-        RETURNING hex;
-        """
-    )
-    moved = cur.fetchall()
-    if moved:
-        print(f"  → archived {len(moved)} flights into aircraft_paths_history")
-
-        cur.execute(
-            f"""
-            DELETE FROM public.aircraft_paths_live
-            WHERE last_seen < now() - interval '{timeout_minutes} minutes';
-            """
-        )
-
-
-# ============================================================
-# 2) PYTHON INGESTION WORKER UPDATE
-# Add this function + call it in the loop
-# ============================================================
 
 def upsert_live_aircraft(cur, msg):
-    """Upsert latest aircraft state (for map markers + sidebar)."""
-    if not msg.get("hex"):
+    hex_ = msg.get("hex")
+    if not hex_:
+        return
+
+    seen = _safe_float(msg.get("seen"), 0.0)
+
+    # ✅ Keep aircraft_live strictly "recent"
+    if seen > ARCHIVE_TIMEOUT_SECONDS:
         return
 
     lat = msg.get("lat")
     lon = msg.get("lon")
 
     geom_sql = (
-        f"ST_SetSRID(ST_MakePoint({lon}, {lat}), 4326)"
+        "ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)"
         if lat is not None and lon is not None
         else "NULL"
     )
@@ -186,7 +122,8 @@ def upsert_live_aircraft(cur, msg):
             geom, data
         )
         VALUES (
-            %(hex)s, %(flight)s, %(category)s, now(),
+            %(hex)s, %(flight)s, %(category)s,
+            now() - make_interval(secs => %(seen)s),
             %(lat)s, %(lon)s, %(alt_baro)s, %(track)s,
             {geom_sql}, %(data)s::jsonb
         )
@@ -194,7 +131,7 @@ def upsert_live_aircraft(cur, msg):
         DO UPDATE SET
             flight    = EXCLUDED.flight,
             category  = EXCLUDED.category,
-            last_seen = now(),
+            last_seen = EXCLUDED.last_seen,
             lat       = EXCLUDED.lat,
             lon       = EXCLUDED.lon,
             alt_baro  = EXCLUDED.alt_baro,
@@ -203,9 +140,10 @@ def upsert_live_aircraft(cur, msg):
             data      = EXCLUDED.data;
         """,
         {
-            "hex": msg.get("hex"),
+            "hex": hex_,
             "flight": (msg.get("flight") or "").strip(),
             "category": msg.get("category"),
+            "seen": seen,
             "lat": lat,
             "lon": lon,
             "alt_baro": msg.get("alt_baro"),
@@ -214,30 +152,128 @@ def upsert_live_aircraft(cur, msg):
         },
     )
 
-# ---- in your loop, call it here ----
-# for aircraft in aircraft_list:
-#     insert_position(cur, aircraft)
-#     upsert_live_aircraft(cur, aircraft)   # ✅ ADD THIS
-#     upsert_live_path(cur, aircraft)
+def upsert_live_path(cur, msg):
+    lat = msg.get("lat")
+    lon = msg.get("lon")
+    if lat is None or lon is None:
+        return
+
+    seen = _safe_float(msg.get("seen"), 0.0)
+    seen_pos = _safe_float(msg.get("seen_pos"), 999)
+
+    if seen_pos > MAX_SEEN_POS_SECONDS_FOR_LINE:
+        return
+
+    cur.execute(
+        """
+        INSERT INTO public.aircraft_paths_live (
+            hex, flight, category,
+            start_time, last_seen, geom
+        )
+        VALUES (
+            %(hex)s, %(flight)s, %(category)s,
+            now(),
+            now() - make_interval(secs => %(seen)s),
+            ST_SetSRID(
+              ST_MakeLine(ARRAY[ST_MakePoint(%(lon)s, %(lat)s)]),
+              4326
+            )
+        )
+        ON CONFLICT (hex, flight)
+        DO UPDATE SET
+            geom = ST_AddPoint(
+                aircraft_paths_live.geom,
+                ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)
+            ),
+            last_seen = EXCLUDED.last_seen;
+        """,
+        {
+            "hex": msg.get("hex"),
+            "flight": (msg.get("flight") or "").strip(),
+            "category": msg.get("category"),
+            "lat": lat,
+            "lon": lon,
+            "seen": seen,
+        },
+    )
+
+
+# ============================================================
+# ARCHIVING / PRUNING (ONE CLOCK)
+# ============================================================
+
+def archive_and_prune(cur):
+    # Archive paths
+    cur.execute(
+        f"""
+        INSERT INTO public.aircraft_paths_history (
+            hex, flight, category, start_time, end_time, geom
+        )
+        SELECT
+            hex, flight, category, start_time, last_seen, geom
+        FROM public.aircraft_paths_live
+        WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds'
+        RETURNING hex;
+        """
+    )
+    moved = cur.fetchall()
+    if moved:
+        print(f"  → archived {len(moved)} flight paths")
+
+    cur.execute(
+        f"""
+        DELETE FROM public.aircraft_paths_live
+        WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds';
+        """
+    )
+
+    # Prune aircraft_live
+    cur.execute(
+        f"""
+        DELETE FROM public.aircraft_live
+        WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds';
+        """
+    )
+
+
+# ============================================================
+# MAIN LOOP
+# ============================================================
 
 def run():
-    """Main polling loop with debug prints."""
+    print("DATA_FILE =", DATA_FILE)
+    print("ARCHIVE_TIMEOUT_SECONDS =", ARCHIVE_TIMEOUT_SECONDS)
+
     with conn.cursor() as cur:
         while True:
-            print("\n[LOOP RUNNING]")
-            print(f"  Reading: {DATA_FILE}")
-
             aircraft_list = read_aircraft_file()
-            print(f"  Found {len(aircraft_list)} aircraft in JSON")
+            print(f"[LOOP] aircraft in JSON: {len(aircraft_list)}")
 
-            for aircraft in aircraft_list:
-                insert_position(cur, aircraft)
-                upsert_live_aircraft(cur, aircraft)   # ✅ ADD THIS LINE
-                upsert_live_path(cur, aircraft)
-            archive_completed_flights(cur)
+            for ac in aircraft_list:
+                hex_ = ac.get("hex")
+                if not hex_:
+                    # dump1090 sometimes includes objects without hex; skip safely
+                    continue
 
+                cur.execute("SAVEPOINT sp_aircraft")
+
+                try:
+                    insert_position(cur, ac)
+                    upsert_live_aircraft(cur, ac)   # writes even if lat/lon missing
+                    upsert_live_path(cur, ac)       # only writes if lat/lon exists
+                    cur.execute("RELEASE SAVEPOINT sp_aircraft")
+
+                except Exception as e:
+                    print("DB error:", repr(e), "hex=", hex_)
+                    # Roll back only this aircraft, not the whole loop
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_aircraft")
+                    cur.execute("RELEASE SAVEPOINT sp_aircraft")
+                    continue
+
+            archive_and_prune(cur)
             conn.commit()
-            time.sleep(2)
+
+            time.sleep(POLL_SECONDS)
 
 
 if __name__ == "__main__":

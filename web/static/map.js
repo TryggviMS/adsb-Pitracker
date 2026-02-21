@@ -320,94 +320,58 @@ setInterval(updateLivePaths, 2000);
 async function updateLocalAircraft() {
   const now = Date.now() / 1000;
 
-  // Helper: remove expired markers + state
-  function pruneExpired() {
-    for (const hex of Object.keys(aircraftState)) {
-      const ac = aircraftState[hex];
-      const age = now - (ac.lastSeen ?? 0);
-
-      if (age > EXPIRE_AFTER) {
-        if (aircraftMarkers[hex]) {
-          aircraftLayer.removeLayer(aircraftMarkers[hex]);
-          delete aircraftMarkers[hex];
-        }
-        delete aircraftState[hex];
-      }
-    }
-  }
-
-  // Helper: redraw sidebar from current state
-  function renderSidebar() {
-    const listEl = document.getElementById('aircraft-list');
-    listEl.innerHTML = '';
-
-    Object.values(aircraftState).forEach(ac => {
-      const age = now - (ac.lastSeen ?? 0);
-
-      const li = document.createElement('li');
-      li.className = 'aircraft-item';
-      if (age > STALE_AFTER) li.style.opacity = '0.4';
-
-      const icon = document.createElement('img');
-      icon.src = ac.hasPosition ? liveIconURL : unknownIconURL;
-      icon.style.width = '30px';
-      icon.style.marginRight = '6px';
-      icon.style.verticalAlign = 'middle';
-      li.appendChild(icon);
-
-      const altText = ac.alt === 'ground'
-        ? 'Á jörðinni'
-        : (ac.alt ? `${ac.alt} ft` : 'Position unknown');
-
-      li.insertAdjacentHTML(
-        'beforeend',
-        `<b>${(ac.flight || '').trim()}</b> (ICAO: ${ac.hex}) <br>` +
-        `- Flokkur: ${ac.category ? ac.category : 'Óþekktur'} <br>` +
-        `${altText} <br>` +
-        (ac.hasPosition ? `- Fjarlægð frá heimili: ${ac.distanceKm} km` : '- Staðsetning óþekkt')
-      );
-
-      if (ac.hasPosition) {
-        li.onclick = () => {
-          map.setView([ac.lat, ac.lon], 12);
-          aircraftMarkers[ac.hex]?.openTooltip();
-        };
-      }
-
-      listEl.appendChild(li);
-    });
-  }
-
   try {
-    // const resp = await fetch('data/aircraft.json', { cache: 'no-store' });
+    // Fetch live aircraft from Flask API (single source of truth)
     const resp = await fetch('http://192.168.0.13:5000/live_aircraft', { cache: 'no-store' });
     const data = await resp.json();
 
-    // If aircraft list missing, treat as empty (so we still prune/render)
     const aircraftArr = Array.isArray(data.aircraft) ? data.aircraft : [];
+    const seenHexes = new Set();
 
-    aircraftArr.forEach(ac => {
-      const { hex, lat, lon, alt_baro, flight, track, category } = ac;
-      if (!hex) return;
+    // Upsert state + markers
+    for (const ac of aircraftArr) {
+      const {
+        hex,
+        lat,
+        lon,
+        alt_baro,
+        flight,
+        track,
+        category,
+        last_seen,        // expected epoch seconds from API
+        last_seen_epoch   // fallback if your API uses this name
+      } = ac;
+
+      if (!hex) continue;
+      seenHexes.add(hex);
 
       if (!aircraftState[hex]) aircraftState[hex] = {};
 
+      const lastSeenEpoch =
+        (typeof last_seen === 'number') ? last_seen :
+        (typeof last_seen_epoch === 'number') ? last_seen_epoch :
+        now;
+
       Object.assign(aircraftState[hex], {
         hex,
-        flight: flight?.trim() || 'Óþekkt vél',
+        flight: (flight || '').trim() || 'Óþekkt vél',
         alt: alt_baro,
         lat,
         lon,
         track,
+        category,
         hasPosition: lat != null && lon != null,
-        lastSeen: now,
-        category
+        lastSeen: lastSeenEpoch
       });
 
+      // Marker handling:
+      // If coords exist → create/update marker
+      // If coords missing → remove any existing marker
       if (lat != null && lon != null) {
+        const altNum = (typeof alt_baro === 'number') ? alt_baro : parseFloat(alt_baro);
         const color =
-          alt_baro > 30000 ? '#ff0000' :
-          alt_baro > 10000 ? '#ffa500' :
+          altNum > 30000 ? '#ff0000' :
+          altNum > 10000 ? '#ffa500' :
           '#00ff00';
 
         if (!aircraftMarkers[hex]) {
@@ -425,17 +389,75 @@ async function updateLocalAircraft() {
 
         aircraftState[hex].distanceKm =
           (homeLatLng.distanceTo(L.latLng(lat, lon)) / 1000).toFixed(1);
+      } else {
+        if (aircraftMarkers[hex]) {
+          aircraftLayer.removeLayer(aircraftMarkers[hex]);
+          delete aircraftMarkers[hex];
+        }
+        aircraftState[hex].distanceKm = null;
       }
-    });
+    }
+
+    // Remove aircraft that are no longer returned by API
+    for (const hex of Object.keys(aircraftState)) {
+      if (!seenHexes.has(hex)) {
+        if (aircraftMarkers[hex]) {
+          aircraftLayer.removeLayer(aircraftMarkers[hex]);
+          delete aircraftMarkers[hex];
+        }
+        delete aircraftState[hex];
+      }
+    }
+
+    // ---------- Sidebar ----------
+    const listEl = document.getElementById('aircraft-list');
+    listEl.innerHTML = '';
+
+    // Sort newest first (by lastSeen)
+    const sorted = Object.values(aircraftState).sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
+
+    for (const ac of sorted) {
+      const age = now - (ac.lastSeen ?? 0);
+
+      const li = document.createElement('li');
+      li.className = 'aircraft-item';
+      if (age > STALE_AFTER) li.style.opacity = '0.4';
+
+      const icon = document.createElement('img');
+      icon.src = ac.hasPosition ? liveIconURL : unknownIconURL;
+      icon.style.width = '30px';
+      icon.style.marginRight = '6px';
+      icon.style.verticalAlign = 'middle';
+      li.appendChild(icon);
+
+      const altText = ac.alt === 'ground'
+        ? 'Á jörðinni'
+        : (ac.alt != null && ac.alt !== '' ? `${ac.alt} ft` : 'Staðsetning óþekkt');
+
+      li.insertAdjacentHTML(
+        'beforeend',
+        `<b>${(ac.flight || '').trim()}</b> (ICAO: ${ac.hex}) <br>` +
+        `- Flokkur: ${ac.category ? ac.category : 'Óþekktur'} <br>` +
+        `${altText} <br>` +
+        (ac.hasPosition && ac.distanceKm != null
+          ? `- Fjarlægð frá heimili: ${ac.distanceKm} km`
+          : '- Staðsetning óþekkt')
+      );
+
+      if (ac.hasPosition) {
+        li.onclick = () => {
+          map.setView([ac.lat, ac.lon], 12);
+          aircraftMarkers[ac.hex]?.openTooltip();
+        };
+      }
+
+      listEl.appendChild(li);
+    }
 
   } catch (err) {
-    console.error('Failed to load aircraft.json:', err);
-    // IMPORTANT: we still prune + render below
+    console.error('Failed to load live_aircraft:', err);
+    // Do not wipe the UI; keep last known state
   }
-
-  // Always run these, even if fetch failed
-  pruneExpired();
-  renderSidebar();
 }
 
 // -----------------------------
