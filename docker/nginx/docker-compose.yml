@@ -1,0 +1,9 @@
+services:
+  adsb-web:
+    image: nginx:alpine
+    container_name: adsb-web
+    ports:
+      - "8081:80"
+    volumes:
+      - ../../web/static:/usr/share/nginx/html:ro
+    restart: unless-stopped
