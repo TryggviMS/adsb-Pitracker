@@ -6,9 +6,9 @@ const KEF = { lat: 63.9850, lon: -22.6056 };
 const RADIUS_KM = 15;
 const CIRCLE_CENTER = { lat: 64.111144, lon: -22.018662 };
 
-const map = L.map('map').setView([RKV.lat, RKV.lon], 10);
-setTimeout(() => map.invalidateSize(), 100);
-
+window.map = L.map('map').setView([RKV.lat, RKV.lon], 10);
+const map = window.map;
+window.addEventListener('resize', () => map.invalidateSize());
 // -----------------------------
 // Base map tiles
 // -----------------------------
@@ -123,15 +123,28 @@ map.on('click', function(e) {
 });
 
 // -----------------------------
-// Sensor range circle
+// Sensor range circles
 // -----------------------------
-L.circle([CIRCLE_CENTER.lat, CIRCLE_CENTER.lon], {
-  radius: RADIUS_KM * 1000,
-  color: '#3388ff',
-  weight: 2,
-  fill: false,
-  dashArray: '6 4'
-}).addTo(map);
+// Distance rings (5, 10, 15, 20 km)
+// -----------------------------
+const distanceRings = [
+  { km: 5,  color: '#4da6ff' },
+  { km: 10, color: '#3399ff' },
+  { km: 15, color: '#1f78d1' },
+  { km: 20, color: '#0b4fa3' }
+];
+
+distanceRings.forEach(ring => {
+  L.circle([CIRCLE_CENTER.lat, CIRCLE_CENTER.lon], {
+    radius: ring.km * 1000,
+    color: ring.color,
+    weight: 1,
+    opacity: 0.6,
+    fill: false,
+    interactive: false,
+    dashArray: '4 6'   // slightly dotted
+  }).addTo(map);
+});
 
 // -----------------------------
 // Static markers
@@ -205,21 +218,44 @@ const homeLatLng = L.latLng(CIRCLE_CENTER.lat, CIRCLE_CENTER.lon);
 // -----------------------------
 let livePathsLayer = null;
 
-// Custom color ramp: start with yellow, end with dark blue
+// Smooth yellow → dark blue ramp with easing
 const colorRamp = [
-  [255, 255, 0],  // bright yellow
-  [255, 255, 0],  // keep first segments yellow
-  [200, 200, 50],
-  [150, 150, 100],
-  [100, 100, 150],
-  [50, 50, 200],
-  [0, 34, 76]     // dark blue
+  [255, 255, 0],   // yellow
+  [220, 220, 40],
+  [180, 180, 80],
+  [130, 130, 130],
+  [80, 80, 180],
+  [30, 30, 220],
+  [0, 34, 76]      // dark blue
 ];
 
+// Increase this value to keep yellow longer (2–3 works well)
+const RAMP_EASE = 2.2;
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
 function getRampColor(t) {
+  // Clamp
   t = Math.max(0, Math.min(1, t));
-  const idx = Math.floor(t * (colorRamp.length - 1));
-  const [r, g, b] = colorRamp[idx];
+
+  // Apply easing (slows the change at the beginning)
+  t = Math.pow(t, RAMP_EASE);
+
+  const n = colorRamp.length - 1;
+  const scaled = t * n;
+
+  const i = Math.floor(scaled);
+  const fraction = scaled - i;
+
+  const c0 = colorRamp[Math.min(i, n)];
+  const c1 = colorRamp[Math.min(i + 1, n)];
+
+  const r = Math.round(lerp(c0[0], c1[0], fraction));
+  const g = Math.round(lerp(c0[1], c1[1], fraction));
+  const b = Math.round(lerp(c0[2], c1[2], fraction));
+
   return `rgb(${r},${g},${b})`;
 }
 
@@ -282,14 +318,75 @@ setInterval(updateLivePaths, 2000);
 // Update aircraft
 // -----------------------------
 async function updateLocalAircraft() {
+  const now = Date.now() / 1000;
+
+  // Helper: remove expired markers + state
+  function pruneExpired() {
+    for (const hex of Object.keys(aircraftState)) {
+      const ac = aircraftState[hex];
+      const age = now - (ac.lastSeen ?? 0);
+
+      if (age > EXPIRE_AFTER) {
+        if (aircraftMarkers[hex]) {
+          aircraftLayer.removeLayer(aircraftMarkers[hex]);
+          delete aircraftMarkers[hex];
+        }
+        delete aircraftState[hex];
+      }
+    }
+  }
+
+  // Helper: redraw sidebar from current state
+  function renderSidebar() {
+    const listEl = document.getElementById('aircraft-list');
+    listEl.innerHTML = '';
+
+    Object.values(aircraftState).forEach(ac => {
+      const age = now - (ac.lastSeen ?? 0);
+
+      const li = document.createElement('li');
+      li.className = 'aircraft-item';
+      if (age > STALE_AFTER) li.style.opacity = '0.4';
+
+      const icon = document.createElement('img');
+      icon.src = ac.hasPosition ? liveIconURL : unknownIconURL;
+      icon.style.width = '30px';
+      icon.style.marginRight = '6px';
+      icon.style.verticalAlign = 'middle';
+      li.appendChild(icon);
+
+      const altText = ac.alt === 'ground'
+        ? 'Á jörðinni'
+        : (ac.alt ? `${ac.alt} ft` : 'Position unknown');
+
+      li.insertAdjacentHTML(
+        'beforeend',
+        `<b>${(ac.flight || '').trim()}</b> (ICAO: ${ac.hex}) <br>` +
+        `- Flokkur: ${ac.category ? ac.category : 'Óþekktur'} <br>` +
+        `${altText} <br>` +
+        (ac.hasPosition ? `- Fjarlægð frá heimili: ${ac.distanceKm} km` : '- Staðsetning óþekkt')
+      );
+
+      if (ac.hasPosition) {
+        li.onclick = () => {
+          map.setView([ac.lat, ac.lon], 12);
+          aircraftMarkers[ac.hex]?.openTooltip();
+        };
+      }
+
+      listEl.appendChild(li);
+    });
+  }
+
   try {
-    const now = Date.now() / 1000;
-
-    const resp = await fetch('data/aircraft.json', { cache: 'no-store' });
+    // const resp = await fetch('data/aircraft.json', { cache: 'no-store' });
+    const resp = await fetch('http://192.168.0.13:5000/live_aircraft', { cache: 'no-store' });
     const data = await resp.json();
-    if (!data.aircraft) return;
 
-    data.aircraft.forEach(ac => {
+    // If aircraft list missing, treat as empty (so we still prune/render)
+    const aircraftArr = Array.isArray(data.aircraft) ? data.aircraft : [];
+
+    aircraftArr.forEach(ac => {
       const { hex, lat, lon, alt_baro, flight, track, category } = ac;
       if (!hex) return;
 
@@ -310,7 +407,8 @@ async function updateLocalAircraft() {
       if (lat != null && lon != null) {
         const color =
           alt_baro > 30000 ? '#ff0000' :
-            alt_baro > 10000 ? '#ffa500' : '#00ff00';
+          alt_baro > 10000 ? '#ffa500' :
+          '#00ff00';
 
         if (!aircraftMarkers[hex]) {
           aircraftMarkers[hex] = L.marker([lat, lon], {
@@ -325,63 +423,19 @@ async function updateLocalAircraft() {
           aircraftMarkers[hex].setRotationAngle(track ?? 0);
         }
 
-        // Distance from home
-        aircraftState[hex].distanceKm = (homeLatLng.distanceTo(L.latLng(lat, lon)) / 1000).toFixed(1);
+        aircraftState[hex].distanceKm =
+          (homeLatLng.distanceTo(L.latLng(lat, lon)) / 1000).toFixed(1);
       }
-    });
-
-    // ---------- Sidebar ----------
-    const listEl = document.getElementById('aircraft-list');
-    listEl.innerHTML = '';
-
-    Object.values(aircraftState).forEach(ac => {
-      const age = now - ac.lastSeen;
-
-      if (age > EXPIRE_AFTER) {
-        if (aircraftMarkers[ac.hex]) {
-          aircraftLayer.removeLayer(aircraftMarkers[ac.hex]);
-          delete aircraftMarkers[ac.hex];
-        }
-        delete aircraftState[ac.hex];
-        return;
-      }
-
-      const li = document.createElement('li');
-      li.className = 'aircraft-item';
-      if (age > STALE_AFTER) li.style.opacity = '0.4';
-
-      const icon = document.createElement('img');
-      icon.src = ac.hasPosition ? liveIconURL : unknownIconURL;
-      icon.style.width = '30px';
-      icon.style.marginRight = '6px';
-      icon.style.verticalAlign = 'middle';
-      li.appendChild(icon);
-
-      const altText = ac.alt === 'ground'
-        ? 'Á jörðinni'
-        : (ac.alt ? `${ac.alt} ft` : 'Position unknown');
-
-      li.insertAdjacentHTML(
-        'beforeend',
-        `<b>${ac.flight.trim()}</b> (ICAO: ${ac.hex}) <br>` +
-        `- Flokkur: ${ac.category ? ac.category : 'Óþekktur'} <br>` +
-        `${altText} <br>` +
-        (ac.hasPosition ? `- Fjarlægð frá heimili: ${ac.distanceKm} km` : '- Staðsetning óþekkt')
-      );
-
-      if (ac.hasPosition) {
-        li.onclick = () => {
-          map.setView([ac.lat, ac.lon], 12);
-          aircraftMarkers[ac.hex]?.openTooltip();
-        };
-      }
-
-      listEl.appendChild(li);
     });
 
   } catch (err) {
     console.error('Failed to load aircraft.json:', err);
+    // IMPORTANT: we still prune + render below
   }
+
+  // Always run these, even if fetch failed
+  pruneExpired();
+  renderSidebar();
 }
 
 // -----------------------------

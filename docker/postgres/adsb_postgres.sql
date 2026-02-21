@@ -206,6 +206,36 @@ WHERE last_seen < now() - interval '10 minutes';
 COMMIT;
 
 
+
+/* ============================================================
+   TABLE 1B – aircraft_live   (NEW)
+   Latest known state per aircraft (Upsert)
+   Used for map markers + sidebar so it stays in sync with /live_paths
+   ============================================================ */
+
+CREATE TABLE IF NOT EXISTS public.aircraft_live (
+    hex TEXT PRIMARY KEY,
+    flight TEXT,
+    category TEXT,
+    last_seen TIMESTAMP NOT NULL DEFAULT now(),
+
+    -- latest state (nullable)
+    lat DOUBLE PRECISION,
+    lon DOUBLE PRECISION,
+    alt_baro TEXT,                   -- dump1090 may return 'ground'
+    track DOUBLE PRECISION,
+
+    geom geometry(Point, 4326),       -- derived from lat/lon
+    data JSONB                        -- optional: latest raw payload
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_aircraft_live_last_seen
+ON public.aircraft_live(last_seen);
+
+CREATE INDEX IF NOT EXISTS idx_aircraft_live_geom
+ON public.aircraft_live USING GIST(geom);
+
 /* ============================================================
    LOGICAL FLOW SUMMARY
    ============================================================
