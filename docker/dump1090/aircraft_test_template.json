@@ -1,0 +1,10 @@
+{ "now" : 1771179368.7,
+  "messages" : 826152,
+  "aircraft" : [
+    {"hex":"test_pos","flight":"N40XR   ","alt_baro":11600,"alt_geom":10950,"gs":318.2,"track":122.3,"baro_rate":2944,"squawk":"2322","emergency":"none","category":"A2","nav_qnh":1013.2,"lat":64.023944,"lon":-22.252148,"nic":8,"rc":186,"seen_pos":0.5,"version":2,"nic_baro":1,"nac_p":10,"nac_v":1,"sil":3,"sil_type":"perhour","gva":2,"sda":2,"mlat":[],"tisb":[],"messages":163,"seen":0.1,"rssi":-22.4},
+    {"hex":"test_nopos","mlat":[],"tisb":[],"messages":168,"seen":0.5,"rssi":-23.6}
+  ]
+}
+/*sudo chown -R trygg:trygg /home/trygg/Documents/adsb-Pitracker/web/static/data
+sudo chmod -R 775 /home/trygg/Documents/adsb-Pitracker/web/static/data
+*/
