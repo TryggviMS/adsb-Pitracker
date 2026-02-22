@@ -11,7 +11,6 @@ import json
 import os
 import time
 from flask import Flask, jsonify
-import psycopg
 from psycopg.rows import tuple_row
 from psycopg_pool import ConnectionPool
 
@@ -45,6 +44,11 @@ pool = ConnectionPool(
 # Routes
 # ------------------------------------------------------------
 
+@app.errorhandler(Exception)
+def handle_error(e):
+    app.logger.error("Unhandled exception: %s", e)
+    return jsonify({"error": "internal server error"}), 500
+
 @app.get("/healthz")
 def healthz():
     # Lightweight DB check
@@ -55,7 +59,7 @@ def healthz():
                 cur.fetchone()
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False}), 500
 
 
 @app.get("/live_aircraft")

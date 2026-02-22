@@ -39,59 +39,15 @@ chmod 600 /home/trygg/Documents/adsb-Pitracker/.env.ingest
 ====================================================================
 SERVICE FILES
 ====================================================================
+/home/trygg/Documents/adsb-Pitracker/systemd
 
 adsb_flask.service
 
-[Unit]
-Description=ADS-B Flask API (gunicorn)
-After=network.target docker.service
-Requires=docker.service
-
-[Service]
-User=trygg
-WorkingDirectory=/home/trygg/Documents/adsb-Pitracker
-EnvironmentFile=/home/trygg/Documents/adsb-Pitracker/.env.api
-
-ExecStart=/home/trygg/Documents/adsb-Pitracker/.venv/bin/gunicorn --workers 2 --threads 4 --timeout 30 --bind 172.17.0.1:5000 src.aircraft_digest_flask:app
-
-Restart=always
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-
-[Install]
-WantedBy=multi-user.target
-
-
 adsb_ingest.service
-
-[Unit]
-Description=ADS-B Ingestion Worker
-After=network.target docker.service
-Requires=docker.service
-
-[Service]
-User=trygg
-WorkingDirectory=/home/trygg/Documents/adsb-Pitracker
-EnvironmentFile=/home/trygg/Documents/adsb-Pitracker/.env.ingest
-
-ExecStart=/home/trygg/Documents/adsb-Pitracker/.venv/bin/python -u src/aircraft_ingest_pg.py
-
-Restart=always
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=/home/trygg/Documents/adsb-Pitracker
-
-[Install]
-WantedBy=multi-user.target
 
 ====================================================================
 INSTALL SERVICES
 ====================================================================
-
 sudo cp systemd/adsb_ingest.service /etc/systemd/system/
 sudo cp systemd/adsb_flask.service /etc/systemd/system/
 sudo systemctl daemon-reload
