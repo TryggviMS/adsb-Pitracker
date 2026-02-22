@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="is">
+
 <head>
   <meta charset="UTF-8">
   <title>ADS-B Flugvélakort í rauntíma</title>
@@ -14,33 +15,52 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
 </head>
+
 <body>
   <div id="app">
 
     <header id="header">
+
       <div class="header-left">
-        ✈️ ADS-B Flugvélavöktun
+        ✈️ ADS-B merkjamóttaka
+      </div>
+
+      <div id="global-stats" class="header-center" aria-label="Tölfræði">
+        <span class="stat">Alls: <b id="stat-total">–</b></span>
+        <span class="sep">│</span>
+        <span class="stat">Í vikunni: <b id="stat-week">–</b></span>
+        <span class="sep">│</span>
+        <span class="stat">Í dag: <b id="stat-today">–</b></span>
+        <span class="sep">│</span>
+        <span class="stat">Síðasta klst: <b id="stat-hour">–</b></span>
+        <span class="sep">│</span>
+        <span class="stat">Síðasta flug: <b id="stat-last">–</b></span>
       </div>
 
       <div class="header-right">
         <button id="sidebar-toggle" class="icon-btn" type="button" aria-label="Sýna/fela lista">
           ☰
         </button>
-<button id="paths-toggle" class="pill-btn" type="button" aria-pressed="false">
-  🕛 Frá miðnætti
-</button>
-        <div id="live-status" aria-label="Rauntímastaða">
+        <button id="paths-toggle" class="pill-btn" type="button">
+          🕛 Frá miðnætti
+        </button>
+
+        <div id="live-status">
           <span class="live-dot"></span>
           <span class="live-text">LIVE</span>
         </div>
       </div>
+
     </header>
 
     <main id="main">
       <div id="map"></div>
 
       <aside id="sidebar">
-        <h3>Flugvélar undir eftirliti</h3>
+        <h3 class="sidebar-heading">
+          <span id="sidebar-title">Flugvélar undir eftirliti</span>
+          <span id="sidebar-count" class="sidebar-count">Fj. í lista: 0</span>
+        </h3>
         <ul id="aircraft-list"></ul>
       </aside>
     </main>
@@ -61,29 +81,116 @@
   <script src="https://rawcdn.githack.com/bbecquet/Leaflet.RotatedMarker/master/leaflet.rotatedMarker.js"></script>
   <script src="map.js"></script>
 
-<script>
-  // Paths toggle: LIVE vs since midnight
-  const pathsBtn = document.getElementById('paths-toggle');
+  <script>
+    // Paths toggle: LIVE vs since midnight
+    const pathsBtn = document.getElementById('paths-toggle');
 
-  function syncPathsButtonUI() {
-    const isMidnight = (window.PATHS_MODE === 'midnight');
-    pathsBtn.classList.toggle('active', isMidnight);
-    pathsBtn.setAttribute('aria-pressed', String(isMidnight));
-    pathsBtn.textContent = isMidnight ? '⚡ LIVE slóðir' : '🕛 Frá miðnætti';
-  }
+    function syncPathsButtonUI() {
+      const isMidnight = (window.PATHS_MODE === 'midnight');
+      pathsBtn.classList.toggle('active', isMidnight);
+      pathsBtn.setAttribute('aria-pressed', String(isMidnight));
+      pathsBtn.textContent = isMidnight ? '⚡ LIVE slóðir' : '🕛 Frá miðnætti';
+    }
 
-  // set initial UI from current mode
-  window.PATHS_MODE = window.PATHS_MODE || 'live';
-  syncPathsButtonUI();
-
-  pathsBtn.addEventListener('click', () => {
-    window.PATHS_MODE = (window.PATHS_MODE === 'midnight') ? 'live' : 'midnight';
+    // set initial UI from current mode
+    window.PATHS_MODE = window.PATHS_MODE || 'live';
     syncPathsButtonUI();
 
-    if (typeof window.updateLivePaths === 'function') {
-      window.updateLivePaths();
+    pathsBtn.addEventListener('click', () => {
+      window.PATHS_MODE = (window.PATHS_MODE === 'midnight') ? 'live' : 'midnight';
+      syncPathsButtonUI();
+
+      if (typeof window.updateLivePaths === 'function') {
+        window.updateLivePaths();
+      }
+    });
+  </script>
+
+  <!-- ✅ ADD THIS NEW SCRIPT -->
+  <script>
+    (function () {
+      const btn = document.getElementById("sidebar-toggle");
+      if (!btn) return;
+
+      btn.addEventListener("click", () => {
+        document.body.classList.toggle("sidebar-open");
+      });
+    })();
+  </script>
+  <script>
+    async function updateStats() {
+      try {
+        const res = await fetch("http://192.168.0.13:5000/stats", { cache: "no-store" });
+        const data = await res.json();
+
+        document.getElementById("stat-total").textContent =
+          (data.total || 0).toLocaleString("is-IS");
+
+        document.getElementById("stat-week").textContent =
+          (data.week || 0).toLocaleString("is-IS");
+
+        document.getElementById("stat-today").textContent =
+          (data.today || 0).toLocaleString("is-IS");
+
+        document.getElementById("stat-hour").textContent =
+          (data.hour || 0).toLocaleString("is-IS");
+
+
+        const lastEl = document.getElementById("stat-last");
+        if (lastEl) {
+          if (data.last_flight_at) {
+            const d = new Date(data.last_flight_at);
+            lastEl.textContent = isNaN(d.getTime())
+              ? "–"
+              : d.toLocaleString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          } else {
+            lastEl.textContent = "–";
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load stats:", err);
+      }
     }
-  });
-</script>
+
+    // initial load
+    updateStats();
+
+    // refresh every 30 seconds
+    setInterval(updateStats, 30000);
+  </script>
+
+  <script>
+    (function () {
+      const statusEl = document.getElementById("live-status");
+      if (!statusEl) return;
+
+      const dotEl = statusEl.querySelector(".live-dot");
+      const textEl = statusEl.querySelector(".live-text");
+
+      async function updateLiveBadgeFromDocker() {
+        try {
+          const res = await fetch("http://192.168.0.13:5000/api/container-status", { cache: "no-store" });
+          const data = await res.json();
+
+          const running = !!data.running;
+
+          // Update badge text
+          if (textEl) textEl.textContent = running ? "LIVE" : "OFFLINE";
+
+          // Update dot color
+          if (dotEl) dotEl.style.backgroundColor = running ? "#2ecc71" : "#e74c3c";
+        } catch (err) {
+          // If API cannot be reached, show offline
+          if (textEl) textEl.textContent = "OFFLINE";
+          if (dotEl) dotEl.style.backgroundColor = "#e74c3c";
+        }
+      }
+
+      updateLiveBadgeFromDocker();
+      setInterval(updateLiveBadgeFromDocker, 3000); // check every 3 seconds
+    })();
+  </script>
+
 </body>
+
 </html>
