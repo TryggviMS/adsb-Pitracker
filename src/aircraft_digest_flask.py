@@ -192,8 +192,8 @@ def stats():
                 now() - interval '1 hour' AS hour0
             ),
 
-            -- SAME union concept as paths_since_midnight, but for multiple windows
             src AS (
+              -- archived paths
               SELECT
                 hex,
                 flight,
@@ -204,17 +204,18 @@ def stats():
 
               UNION ALL
 
+              -- live paths: use last_seen as end_time (NOT now())
               SELECT
-                hex,
-                flight,
-                category,
-                start_time,
-                now() AS end_time
-              FROM public.aircraft_paths_live
+                p.hex,
+                p.flight,
+                p.category,
+                p.start_time,
+                p.last_seen AS end_time
+              FROM public.aircraft_paths_live p
+              WHERE p.last_seen > now() - interval '60 seconds'
             ),
 
             grouped AS (
-              -- EXACT SAME "unit" as the list: one row per (hex, flight, category)
               SELECT
                 hex,
                 flight,
@@ -226,21 +227,11 @@ def stats():
             )
 
             SELECT
-              -- total archived paths
               (SELECT COUNT(*) FROM public.aircraft_paths_history) AS total,
-
-              -- week
               COUNT(*) FILTER (WHERE end_time >= (SELECT week0 FROM t)) AS week,
-
-              -- today
-              COUNT(*) FILTER (WHERE end_time >= (SELECT day0 FROM t)) AS today,
-
-              -- last hour
+              COUNT(*) FILTER (WHERE end_time >= (SELECT day0  FROM t)) AS today,
               COUNT(*) FILTER (WHERE end_time >= (SELECT hour0 FROM t)) AS hour,
-
-              -- newest flight end time
               MAX(end_time) AS last_flight_at
-
             FROM grouped;
             """
         )

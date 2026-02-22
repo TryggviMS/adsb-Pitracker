@@ -136,17 +136,17 @@
           (data.hour || 0).toLocaleString("is-IS");
 
 
-          const lastEl = document.getElementById("stat-last");
-if (lastEl) {
-  if (data.last_flight_at) {
-    const d = new Date(data.last_flight_at);
-    lastEl.textContent = isNaN(d.getTime())
-      ? "–"
-      : d.toLocaleString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  } else {
-    lastEl.textContent = "–";
-  }
-}
+        const lastEl = document.getElementById("stat-last");
+        if (lastEl) {
+          if (data.last_flight_at) {
+            const d = new Date(data.last_flight_at);
+            lastEl.textContent = isNaN(d.getTime())
+              ? "–"
+              : d.toLocaleString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          } else {
+            lastEl.textContent = "–";
+          }
+        }
       } catch (err) {
         console.error("Failed to load stats:", err);
       }

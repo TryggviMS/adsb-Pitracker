@@ -216,6 +216,19 @@ function fmtDurationSeconds(s) {
   return `${hh.toString().padStart(2, "0")}:${mm.toString().padStart(2, "0")}:${ss.toString().padStart(2, "0")}`;
 }
 
+function fmtDurationPretty(s) {
+  if (s == null || !isFinite(s) || s < 0) return "—";
+
+  const minutes = Math.floor(s / 60);
+  const seconds = Math.floor(s % 60);
+
+  if (minutes > 0) {
+    return `${minutes} mín ${seconds} sek`;
+  } else {
+    return `${seconds} sek`;
+  }
+}
+
 function setSidebarTitle(text) {
   const el = document.getElementById("sidebar-title");
   if (el) el.textContent = text;
@@ -344,11 +357,13 @@ function updateSidebarFromMidnightPaths(geojson) {
       "beforeend",
       `<b>${flight}</b> (ICAO: ${hex}) <br>` +
       `- Flokkur: ${category} <br>` +
-      `- Hæð: Ekki tiltækt <br>` +
-      `- Merki frá vél móttekið í ${fmtDurationSeconds(durSec)} ` +
-      `frá ${fmtTime(p.start_time)} til ${fmtTime(p.end_time)} <br>` +
+      //`- Hæð: Ekki tiltækt <br>` +
+
+      `- Fyrst móttekið: ${fmtTime(p.start_time)} <br>` +
+      `- Síðast móttekið: ${fmtTime(p.end_time)} <br>` +
+      `- Merki frá vél móttekið í ${fmtDurationPretty(durSec)} <br>` +
       (typeof p.total_length_km === "number"
-        ? `- Fluglengd ${p.total_length_km.toFixed(1)} km`
+        ? `- Lengd flugs: ${p.total_length_km.toFixed(1)} km`
         : "")
     );
 
