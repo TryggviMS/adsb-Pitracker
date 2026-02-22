@@ -26,8 +26,5 @@ db/data/
 .vscode/
 docker/postgres/pg_users.sql
 
-
-
-docs/
+docs/CLOUDFLARE.MD
 cloudflared.deb
-systemd/adsb_flask.service
