@@ -29,3 +29,4 @@ docker/postgres/pg_users.sql
 
 
 docs/
+cloudflared.deb
