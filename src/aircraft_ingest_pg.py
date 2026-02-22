@@ -24,6 +24,11 @@ ARCHIVE_TIMEOUT_SECONDS = 30  # e.g. 30 seconds
 # Only append to path if position is fresh
 MAX_SEEN_POS_SECONDS_FOR_LINE = 30
 
+# Path history acceptance thresholds ("truth policy")
+MIN_DURATION_SECONDS = 20
+MIN_POINTS = 4
+MIN_DISTANCE_KM = 0.3
+
 # --- Aircraft JSON location ---
 DEFAULT_DATA_FILE = Path.cwd() / "web" / "static" / "data" / "aircraft.json"
 DATA_FILE = Path(os.environ.get("ADSB_DATA_FILE", str(DEFAULT_DATA_FILE)))
@@ -159,14 +164,14 @@ def upsert_live_aircraft(cur, msg):
 def upsert_live_path(cur, msg):
     lat = msg.get("lat")
     lon = msg.get("lon")
-    if lat is None or lon is None:
-        return
 
     seen = _safe_float(msg.get("seen"), 0.0)
     seen_pos = _safe_float(msg.get("seen_pos"), 999.0)
 
-    if seen_pos > MAX_SEEN_POS_SECONDS_FOR_LINE:
-        return
+    # We ALWAYS upsert the row so "no-position" aircraft are still tracked/archived.
+    # But we only touch geom when we have a valid position and it's fresh.
+    has_pos = (lat is not None and lon is not None)
+    can_use_pos = has_pos and (seen_pos <= MAX_SEEN_POS_SECONDS_FOR_LINE)
 
     cur.execute(
         """
@@ -178,18 +183,37 @@ def upsert_live_path(cur, msg):
             %(hex)s, %(flight)s, %(category)s,
             now(),
             now() - make_interval(secs => %(seen)s),
-            ST_SetSRID(
-              ST_MakeLine(ARRAY[ST_MakePoint(%(lon)s, %(lat)s)]),
-              4326
-            )
+            CASE
+              WHEN %(can_use_pos)s THEN
+                ST_SetSRID(
+                  ST_MakeLine(ARRAY[ST_MakePoint(%(lon)s, %(lat)s)]),
+                  4326
+                )
+              ELSE NULL
+            END
         )
         ON CONFLICT (hex, flight)
         DO UPDATE SET
-            geom = ST_AddPoint(
-                aircraft_paths_live.geom,
-                ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)
-            ),
-            last_seen = EXCLUDED.last_seen;
+            category  = EXCLUDED.category,
+            last_seen = EXCLUDED.last_seen,
+            geom = CASE
+              -- no usable position this tick -> keep existing geom as-is
+              WHEN NOT %(can_use_pos)s THEN aircraft_paths_live.geom
+
+              -- first usable position for this row -> start the line
+              WHEN aircraft_paths_live.geom IS NULL THEN
+                ST_SetSRID(
+                  ST_MakeLine(ARRAY[ST_MakePoint(%(lon)s, %(lat)s)]),
+                  4326
+                )
+
+              -- otherwise append point
+              ELSE
+                ST_AddPoint(
+                  aircraft_paths_live.geom,
+                  ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)
+                )
+            END;
         """,
         {
             "hex": msg.get("hex"),
@@ -198,6 +222,7 @@ def upsert_live_path(cur, msg):
             "lat": lat,
             "lon": lon,
             "seen": seen,
+            "can_use_pos": bool(can_use_pos),
         },
     )
 
@@ -207,24 +232,43 @@ def upsert_live_path(cur, msg):
 # ============================================================
 
 def archive_and_prune(cur):
-    # Archive paths
+    # Archive only stale paths that pass truth policy
     cur.execute(
         f"""
+        WITH stale AS (
+            SELECT
+                hex,
+                flight,
+                category,
+                start_time,
+                last_seen AS end_time,
+                geom,
+                EXTRACT(EPOCH FROM (last_seen - start_time)) AS duration_s,
+                CASE WHEN geom IS NULL THEN 0 ELSE ST_NPoints(geom) END AS n_points,
+                CASE
+                    WHEN geom IS NULL THEN 0
+                    ELSE ST_Length(geom::geography) / 1000.0
+                END AS dist_km
+            FROM public.aircraft_paths_live
+            WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds'
+        )
         INSERT INTO public.aircraft_paths_history (
             hex, flight, category, start_time, end_time, geom
         )
         SELECT
-            hex, flight, category, start_time, last_seen, geom
-        FROM public.aircraft_paths_live
-        WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds'
+            hex, flight, category, start_time, end_time, geom
+        FROM stale
+        WHERE duration_s >= {MIN_DURATION_SECONDS}
+          AND n_points   >= {MIN_POINTS}
+          AND dist_km    >= {MIN_DISTANCE_KM}
         RETURNING hex;
         """
     )
-    moved = cur.fetchall()
-    if moved:
-        print(f"  → archived {len(moved)} flight paths")
+    archived = cur.rowcount  # number inserted
+    if archived:
+        print(f"  → archived {archived} paths (passed thresholds)")
 
-    # Remove archived paths from live
+    # Remove stale paths from live regardless (so live stays clean)
     cur.execute(
         f"""
         DELETE FROM public.aircraft_paths_live
@@ -232,14 +276,13 @@ def archive_and_prune(cur):
         """
     )
 
-    # Prune aircraft_live
+    # Prune aircraft_live as before
     cur.execute(
         f"""
         DELETE FROM public.aircraft_live
         WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds';
         """
     )
-
 
 # ============================================================
 # MAIN LOOP
