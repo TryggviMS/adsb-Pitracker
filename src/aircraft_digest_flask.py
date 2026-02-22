@@ -58,7 +58,7 @@ def healthz():
                 cur.execute("SELECT 1;")
                 cur.fetchone()
         return jsonify({"ok": True})
-    except Exception as e:
+    except Exception:
         return jsonify({"ok": False}), 500
 
 
