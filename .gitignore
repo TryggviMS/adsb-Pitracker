@@ -24,7 +24,6 @@ db/data/
 # OS / Editor
 .DS_Store
 .vscode/
-docker/postgres/pg_users.sql
 
 docs/CLOUDFLARE.MD
 cloudflared.deb
