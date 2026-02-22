@@ -27,3 +27,7 @@ db/data/
 .DS_Store
 .vscode/
 docker/postgres/pg_users.sql
+
+
+
+docs/
