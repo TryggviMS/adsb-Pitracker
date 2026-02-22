@@ -4,8 +4,6 @@
 .env.api
 .env.ingest
 
-adsb-Pitracker/docs/SYSTEMD_SETUP.md
-
 # Python
 __pycache__/
 *.pyc
@@ -27,3 +25,6 @@ db/data/
 .DS_Store
 .vscode/
 docker/postgres/pg_users.sql
+
+docs/CLOUDFLARE.MD
+cloudflared.deb

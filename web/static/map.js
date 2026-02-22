@@ -13,8 +13,10 @@ const map = window.map;
 // Midnight toggle (single source of truth = window.PATHS_MODE)
 window.PATHS_MODE = window.PATHS_MODE || "live"; // "live" | "midnight"
 
-const PATHS_URL_LIVE = "http://192.168.0.13:5000/live_paths";
-const PATHS_URL_MIDNIGHT = "http://192.168.0.13:5000/paths_since_midnight";
+
+const PATHS_URL_LIVE = "/live_paths";
+const PATHS_URL_MIDNIGHT = "/paths_since_midnight";
+
 
 window.addEventListener("resize", () => map.invalidateSize());
 
@@ -308,6 +310,12 @@ function addGradientLine(feature) {
   return segments;
 }
 
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str ?? "";
+  return d.innerHTML;
+}
+
 function updateSidebarFromMidnightPaths(geojson) {
   const listEl = document.getElementById("aircraft-list");
   if (!listEl) return;
@@ -347,7 +355,7 @@ function updateSidebarFromMidnightPaths(geojson) {
 
     const icon = document.createElement("img");
     icon.src = isUnknown ? unknownIconURL : liveIconURL;
-    
+
     icon.style.width = "30px";
     icon.style.marginRight = "6px";
     icon.style.verticalAlign = "middle";
@@ -355,10 +363,8 @@ function updateSidebarFromMidnightPaths(geojson) {
 
     li.insertAdjacentHTML(
       "beforeend",
-      `<b>${flight}</b> (ICAO: ${hex}) <br>` +
-      `- Flokkur: ${category} <br>` +
-      //`- Hæð: Ekki tiltækt <br>` +
-
+      `<b>${escapeHtml(flight)}</b> (ICAO: ${escapeHtml(hex)}) <br>` +
+      `- Flokkur: ${escapeHtml(category)} <br>` +
       `- Fyrst móttekið: ${fmtTime(p.start_time)} <br>` +
       `- Síðast móttekið: ${fmtTime(p.end_time)} <br>` +
       `- Merki frá vél móttekið í ${fmtDurationPretty(durSec)} <br>` +
@@ -366,7 +372,6 @@ function updateSidebarFromMidnightPaths(geojson) {
         ? `- Lengd flugs: ${p.total_length_km.toFixed(1)} km`
         : "")
     );
-
     // click = zoom to the path (if present on map)
     li.onclick = () => {
       const segs = window.pathsByHex?.[hex];
@@ -454,7 +459,7 @@ async function updateLocalAircraft() {
   const now = Date.now() / 1000;
 
   try {
-    const resp = await fetch("http://192.168.0.13:5000/live_aircraft", {
+    const resp = await fetch("/live_aircraft", {
       cache: "no-store",
     });
     const data = await resp.json();
@@ -573,8 +578,8 @@ async function updateLocalAircraft() {
 
       li.insertAdjacentHTML(
         "beforeend",
-        `<b>${(ac.flight || "").trim()}</b> (ICAO: ${ac.hex}) <br>` +
-        `- Flokkur: ${ac.category ? ac.category : "Óþekktur"} <br>` +
+        `<b>${escapeHtml((ac.flight || "").trim())}</b> (ICAO: ${escapeHtml(ac.hex)}) <br>` +
+        `- Flokkur: ${escapeHtml(ac.category || "Óþekktur")} <br>` +
         `${altText} <br>` +
         (ac.totalLengthKm != null
           ? `- Fluglengd: ${ac.totalLengthKm.toFixed(1)} km <br>`

@@ -1,15 +1,27 @@
 [Unit]
-Description=ADS-B Flask API
+Description=ADS-B Flask API (gunicorn)
 After=network.target docker.service
 Requires=docker.service
 
 [Service]
 User=trygg
 WorkingDirectory=/home/trygg/Documents/adsb-Pitracker
-EnvironmentFile=/home/trygg/Documents/adsb-Pitracker/.env
-ExecStart=/home/trygg/Documents/adsb-Pitracker/.venv/bin/python -u src/aircraft_digest_flask.py
-Restart=unless-stopped
+EnvironmentFile=/home/trygg/Documents/adsb-Pitracker/.env.api
+
+ExecStart=/home/trygg/Documents/adsb-Pitracker/.venv/bin/gunicorn \
+  --workers 2 \
+  --threads 4 \
+  --timeout 30 \
+  --worker-tmp-dir /tmp \
+  --bind 172.17.0.1:5000 \
+  src.aircraft_digest_flask:app
+
+Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target

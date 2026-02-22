@@ -49,6 +49,8 @@ sudo docker logs -f dump1090
 cd docker/nginx
 sudo docker compose up -d
 
+sudo docker compose restart adsb-web
+
 Return to project root:
 
 cd ../../
