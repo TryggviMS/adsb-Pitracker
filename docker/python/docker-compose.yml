@@ -1,0 +1,26 @@
+services:
+  adsb-ingest:
+    build:
+      context: ../..          # repo root, so COPY src/ works
+      dockerfile: docker/python/Dockerfile
+    command: python src/aircraft_ingest_pg.py
+    restart: unless-stopped
+    env_file:
+      - ../../.env.ingest
+    networks:
+      - adsb_net
+
+  adsb-flask:
+    build:
+      context: ../..
+      dockerfile: docker/python/Dockerfile
+    command: gunicorn --bind 0.0.0.0:5000 --workers 2 "src.aircraft_digest_flask:app"
+    restart: unless-stopped
+    env_file:
+      - ../../.env.api
+    networks:
+      - adsb_net
+
+networks:
+  adsb_net:
+    external: true

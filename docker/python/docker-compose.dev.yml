@@ -1,0 +1,10 @@
+services:
+  adsb-ingest:
+    volumes:
+      - ../../src:/app/src
+
+  adsb-flask:
+    volumes:
+      - ../../src:/app/src
+      - ../../web:/app/web
+    command: flask --app src/aircraft_digest_flask run --host 0.0.0.0 --port 5000 --debug
