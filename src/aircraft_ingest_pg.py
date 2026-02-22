@@ -3,6 +3,12 @@ ADS-B ingestion worker reading dump1090 aircraft.json.
 
 Single source of truth for time-based lifecycle:
 - ARCHIVE_TIMEOUT_SECONDS controls everything
+
+Updates in this version:
+- Robust DB reconnect loop (handles dropped connections)
+- Avoids f-string SQL for time intervals (uses make_interval params)
+- Safer "archived count" reporting (uses RETURNING + fetchall)
+- Keeps behavior: tracks aircraft even with no position; only appends geom when position is fresh
 """
 
 import json
@@ -11,46 +17,49 @@ import time
 from pathlib import Path
 
 import psycopg
+from psycopg import OperationalError
 
 # ============================================================
 # CONFIG – SINGLE SOURCE OF TRUTH
 # ============================================================
 
-POLL_SECONDS = 2
+POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "2"))
 
 # 🔥 ONE knob controls ALL archiving & pruning (seconds)
-ARCHIVE_TIMEOUT_SECONDS = 30  # e.g. 30 seconds
+ARCHIVE_TIMEOUT_SECONDS = int(os.environ.get("ARCHIVE_TIMEOUT_SECONDS", "30"))
 
 # Only append to path if position is fresh
-MAX_SEEN_POS_SECONDS_FOR_LINE = 30
+MAX_SEEN_POS_SECONDS_FOR_LINE = int(os.environ.get("MAX_SEEN_POS_SECONDS_FOR_LINE", "30"))
 
 # Path history acceptance thresholds ("truth policy")
-MIN_DURATION_SECONDS = 20
-MIN_POINTS = 4
-MIN_DISTANCE_KM = 0.3
+MIN_DURATION_SECONDS = int(os.environ.get("MIN_DURATION_SECONDS", "20"))
+MIN_POINTS = int(os.environ.get("MIN_POINTS", "4"))
+MIN_DISTANCE_KM = float(os.environ.get("MIN_DISTANCE_KM", "0.3"))
 
 # --- Aircraft JSON location ---
 DEFAULT_DATA_FILE = Path.cwd() / "web" / "static" / "data" / "aircraft.json"
 DATA_FILE = Path(os.environ.get("ADSB_DATA_FILE", str(DEFAULT_DATA_FILE)))
 
-# --- Database ---
+# --- Database (from systemd EnvironmentFile) ---
 DB_NAME = os.environ["PGDATABASE"]
 DB_USER = os.environ["PGUSER"]
 DB_PASS = os.environ["PGPASSWORD"]
 DB_HOST = os.environ.get("PGHOST", "localhost")
 DB_PORT = os.environ.get("PGPORT", "5432")
 
+# Optional SSL mode if you ever point at remote PG:
+#   disable | allow | prefer | require | verify-ca | verify-full
+DB_SSLMODE = os.environ.get("PGSSLMODE", "prefer")
+
 DB_DSN = (
-    f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}"
+    f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} "
+    f"host={DB_HOST} port={DB_PORT} sslmode={DB_SSLMODE}"
 )
-
-conn = psycopg.connect(DB_DSN)
-conn.autocommit = False
-
 
 # ============================================================
 # HELPERS
 # ============================================================
+
 
 def _safe_float(v, default=0.0) -> float:
     try:
@@ -67,6 +76,23 @@ def read_aircraft_file():
     except Exception as e:
         print("read_aircraft_file failed:", repr(e))
         return []
+
+
+def connect_db_with_retry():
+    """
+    Keep trying to connect. systemd will also restart on crash,
+    but reconnecting here makes the worker more resilient.
+    """
+    delay = 1
+    while True:
+        try:
+            conn = psycopg.connect(DB_DSN)
+            conn.autocommit = False
+            return conn
+        except OperationalError as e:
+            print(f"[DB] connect failed: {repr(e)}  -> retry in {delay}s")
+            time.sleep(delay)
+            delay = min(delay * 2, 30)
 
 
 # ============================================================
@@ -234,7 +260,7 @@ def upsert_live_path(cur, msg):
 def archive_and_prune(cur):
     # Archive only stale paths that pass truth policy
     cur.execute(
-        f"""
+        """
         WITH stale AS (
             SELECT
                 hex,
@@ -250,7 +276,7 @@ def archive_and_prune(cur):
                     ELSE ST_Length(geom::geography) / 1000.0
                 END AS dist_km
             FROM public.aircraft_paths_live
-            WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds'
+            WHERE last_seen < now() - make_interval(secs => %(archive_s)s)
         )
         INSERT INTO public.aircraft_paths_history (
             hex, flight, category, start_time, end_time, geom
@@ -258,31 +284,40 @@ def archive_and_prune(cur):
         SELECT
             hex, flight, category, start_time, end_time, geom
         FROM stale
-        WHERE duration_s >= {MIN_DURATION_SECONDS}
-          AND n_points   >= {MIN_POINTS}
-          AND dist_km    >= {MIN_DISTANCE_KM}
+        WHERE duration_s >= %(min_duration_s)s
+          AND n_points   >= %(min_points)s
+          AND dist_km    >= %(min_distance_km)s
         RETURNING hex;
-        """
+        """,
+        {
+            "archive_s": ARCHIVE_TIMEOUT_SECONDS,
+            "min_duration_s": MIN_DURATION_SECONDS,
+            "min_points": MIN_POINTS,
+            "min_distance_km": MIN_DISTANCE_KM,
+        },
     )
-    archived = cur.rowcount  # number inserted
-    if archived:
-        print(f"  → archived {archived} paths (passed thresholds)")
+    archived_rows = cur.fetchall()
+    if archived_rows:
+        print(f"  → archived {len(archived_rows)} paths (passed thresholds)")
 
     # Remove stale paths from live regardless (so live stays clean)
     cur.execute(
-        f"""
-        DELETE FROM public.aircraft_paths_live
-        WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds';
         """
+        DELETE FROM public.aircraft_paths_live
+        WHERE last_seen < now() - make_interval(secs => %(archive_s)s);
+        """,
+        {"archive_s": ARCHIVE_TIMEOUT_SECONDS},
     )
 
     # Prune aircraft_live as before
     cur.execute(
-        f"""
-        DELETE FROM public.aircraft_live
-        WHERE last_seen < now() - interval '{ARCHIVE_TIMEOUT_SECONDS} seconds';
         """
+        DELETE FROM public.aircraft_live
+        WHERE last_seen < now() - make_interval(secs => %(archive_s)s);
+        """,
+        {"archive_s": ARCHIVE_TIMEOUT_SECONDS},
     )
+
 
 # ============================================================
 # MAIN LOOP
@@ -290,36 +325,60 @@ def archive_and_prune(cur):
 
 def run():
     print("DATA_FILE =", DATA_FILE)
+    print("POLL_SECONDS =", POLL_SECONDS)
     print("ARCHIVE_TIMEOUT_SECONDS =", ARCHIVE_TIMEOUT_SECONDS)
+    print("DB_HOST =", DB_HOST, "DB_PORT =", DB_PORT, "DB_NAME =", DB_NAME, "DB_USER =", DB_USER)
 
-    with conn.cursor() as cur:
-        while True:
+    conn = connect_db_with_retry()
+
+    while True:
+        try:
             aircraft_list = read_aircraft_file()
             print(f"[LOOP] aircraft in JSON: {len(aircraft_list)}")
 
-            for ac in aircraft_list:
-                hex_ = ac.get("hex")
-                if not hex_:
-                    # dump1090 sometimes includes objects without hex; skip safely
-                    continue
+            with conn.cursor() as cur:
+                for ac in aircraft_list:
+                    hex_ = ac.get("hex")
+                    if not hex_:
+                        # dump1090 sometimes includes objects without hex; skip safely
+                        continue
 
-                cur.execute("SAVEPOINT sp_aircraft")
+                    cur.execute("SAVEPOINT sp_aircraft")
 
-                try:
-                    insert_position(cur, ac)
-                    upsert_live_aircraft(cur, ac)  # writes even if lat/lon missing
-                    upsert_live_path(cur, ac)      # only writes if lat/lon exists
-                    cur.execute("RELEASE SAVEPOINT sp_aircraft")
-                except Exception as e:
-                    print("DB error:", repr(e), "hex=", hex_)
-                    # Roll back only this aircraft, not the whole loop
-                    cur.execute("ROLLBACK TO SAVEPOINT sp_aircraft")
-                    cur.execute("RELEASE SAVEPOINT sp_aircraft")
-                    continue
+                    try:
+                        insert_position(cur, ac)
+                        upsert_live_aircraft(cur, ac)  # writes even if lat/lon missing
+                        upsert_live_path(cur, ac)      # appends geom only when position is usable
+                        cur.execute("RELEASE SAVEPOINT sp_aircraft")
+                    except Exception as e:
+                        print("DB error:", repr(e), "hex=", hex_)
+                        # Roll back only this aircraft, not the whole loop
+                        cur.execute("ROLLBACK TO SAVEPOINT sp_aircraft")
+                        cur.execute("RELEASE SAVEPOINT sp_aircraft")
+                        continue
 
-            archive_and_prune(cur)
-            conn.commit()
+                archive_and_prune(cur)
+                conn.commit()
+
             time.sleep(POLL_SECONDS)
+
+        except OperationalError as e:
+            # connection dropped -> reconnect and continue
+            print(f"[DB] operational error: {repr(e)}  -> reconnecting")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = connect_db_with_retry()
+
+        except Exception as e:
+            # unexpected error -> rollback current tx, keep running
+            print(f"[LOOP] unexpected error: {repr(e)}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            time.sleep(1)
 
 
 if __name__ == "__main__":
