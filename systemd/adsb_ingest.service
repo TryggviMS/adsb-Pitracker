@@ -6,10 +6,16 @@ Requires=docker.service
 [Service]
 User=trygg
 WorkingDirectory=/home/trygg/Documents/adsb-Pitracker
-EnvironmentFile=/home/trygg/Documents/adsb-Pitracker/.env
+EnvironmentFile=/home/trygg/Documents/adsb-Pitracker/.env.ingest
+
 ExecStart=/home/trygg/Documents/adsb-Pitracker/.venv/bin/python -u src/aircraft_ingest_pg.py
-Restart=unless-stopped
+
+Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/trygg/Documents/adsb-Pitracker
 
 [Install]
 WantedBy=multi-user.target

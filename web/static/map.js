@@ -13,8 +13,10 @@ const map = window.map;
 // Midnight toggle (single source of truth = window.PATHS_MODE)
 window.PATHS_MODE = window.PATHS_MODE || "live"; // "live" | "midnight"
 
-const PATHS_URL_LIVE = "http://192.168.0.13:5000/live_paths";
-const PATHS_URL_MIDNIGHT = "http://192.168.0.13:5000/paths_since_midnight";
+
+const PATHS_URL_LIVE = "/live_paths";
+const PATHS_URL_MIDNIGHT = "/paths_since_midnight";
+
 
 window.addEventListener("resize", () => map.invalidateSize());
 
@@ -454,7 +456,7 @@ async function updateLocalAircraft() {
   const now = Date.now() / 1000;
 
   try {
-    const resp = await fetch("http://192.168.0.13:5000/live_aircraft", {
+    const resp = await fetch("/live_aircraft", {
       cache: "no-store",
     });
     const data = await resp.json();

@@ -248,20 +248,7 @@ def stats():
         }
     )
 
-CONTAINER_NAME = "dump1090"
-@app.get("/api/container-status")
-def api_container_status():
-    try:
-        r = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER_NAME],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        running = (r.returncode == 0 and r.stdout.strip() == "true")
-        return jsonify({"running": running})
-    except Exception as e:
-        return jsonify({"running": False, "error": str(e)})
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)
