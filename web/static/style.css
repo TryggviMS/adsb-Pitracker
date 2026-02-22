@@ -210,6 +210,30 @@ html, body {
   opacity: 0.9;
 }
 
+/* Sidebar heading with right-aligned counter */
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  width: 100%;              /* ensure full width */
+}
+
+#sidebar-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+/* Push counter fully to the right */
+.sidebar-count {
+  margin-left: auto;        /* THIS makes it snap right */
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.7;
+  letter-spacing: 0.3px;
+}
+
 #aircraft-list {
   list-style: none;
   padding: 0;

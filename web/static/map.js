@@ -302,6 +302,8 @@ function updateSidebarFromMidnightPaths(geojson) {
   setSidebarTitle("Flugvélar frá miðnætti");
 
   const feats = Array.isArray(geojson?.features) ? geojson.features : [];
+  const c = document.getElementById("sidebar-count");
+  if (c) c.textContent = `Fj. í lista: ${feats.length}`;
 
   feats.sort((a, b) => {
     const ta = Date.parse(a?.properties?.end_time || "") || 0;
@@ -314,7 +316,8 @@ function updateSidebarFromMidnightPaths(geojson) {
   for (const f of feats) {
     const p = f.properties || {};
     const hex = p.hex || "—";
-    const flight = (p.flight || "").trim() || "Óþekkt vél";
+    const flightRaw = (p.flight || "").trim();
+    const flight = flightRaw || "Flugnr óþekkt";
     const category = p.category || "Óþekktur";
 
     const t0 = Date.parse(p.start_time || "");
@@ -322,27 +325,32 @@ function updateSidebarFromMidnightPaths(geojson) {
     const durSec =
       Number.isFinite(t0) && Number.isFinite(t1) ? Math.max(0, (t1 - t0) / 1000) : null;
 
+    // "Unknown" in midnight sidebar should behave like live sidebar:
+    // If no callsign/flight is present, show the unknown icon.
+    const isUnknown = !flightRaw;
+
     const li = document.createElement("li");
     li.className = "aircraft-item";
 
     const icon = document.createElement("img");
-    icon.src = liveIconURL; // reuse existing icon
+    icon.src = isUnknown ? unknownIconURL : liveIconURL;
+    
     icon.style.width = "30px";
     icon.style.marginRight = "6px";
     icon.style.verticalAlign = "middle";
     li.appendChild(icon);
 
-li.insertAdjacentHTML(
-  "beforeend",
-  `<b>${flight}</b> (ICAO: ${hex}) <br>` +
-    `- Flokkur: ${category} <br>` +
-    `- Hæð: Ekki tiltækt <br>` +
-    `- Merki frá vél móttekið í ${fmtDurationSeconds(durSec)} ` +
-    `frá ${fmtTime(p.start_time)} til ${fmtTime(p.end_time)} <br>` +
-    (typeof p.total_length_km === "number"
-      ? `- Fluglengd ${p.total_length_km.toFixed(1)} km`
-      : "")
-);
+    li.insertAdjacentHTML(
+      "beforeend",
+      `<b>${flight}</b> (ICAO: ${hex}) <br>` +
+      `- Flokkur: ${category} <br>` +
+      `- Hæð: Ekki tiltækt <br>` +
+      `- Merki frá vél móttekið í ${fmtDurationSeconds(durSec)} ` +
+      `frá ${fmtTime(p.start_time)} til ${fmtTime(p.end_time)} <br>` +
+      (typeof p.total_length_km === "number"
+        ? `- Fluglengd ${p.total_length_km.toFixed(1)} km`
+        : "")
+    );
 
     // click = zoom to the path (if present on map)
     li.onclick = () => {
@@ -467,7 +475,7 @@ async function updateLocalAircraft() {
 
       Object.assign(aircraftState[hex], {
         hex,
-        flight: (flight || "").trim() || "Óþekkt vél",
+        flight: (flight || "").trim() || "Flugnr óþekkt",
         alt: alt_baro,
         lat,
         lon,
@@ -524,6 +532,8 @@ async function updateLocalAircraft() {
     const sorted = Object.values(aircraftState).sort(
       (a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0)
     );
+    const c = document.getElementById("sidebar-count");
+    if (c) c.textContent = `Fj. í lista: ${sorted.length}`;
 
     for (const ac of sorted) {
       const age = now - (ac.lastSeen ?? 0);
@@ -546,14 +556,18 @@ async function updateLocalAircraft() {
             ? `${ac.alt} ft`
             : "Staðsetning óþekkt";
 
-li.insertAdjacentHTML(
-  "beforeend",
-  `<b>${(ac.flight || "").trim()}</b> (ICAO: ${ac.hex}) <br>` +
-    `- Flokkur: ${ac.category ? ac.category : "Óþekktur"} <br>` +
-    `${altText} <br>` +
-    (ac.hasPosition && ac.distanceKm != null ? `- Fjarlægð frá heimili: ${ac.distanceKm} km`: "- Staðsetning óþekkt") +
-        (ac.totalLengthKm != null ? `- Fluglengd: ${ac.totalLengthKm.toFixed(1)} km <br>`: "") 
-);
+      li.insertAdjacentHTML(
+        "beforeend",
+        `<b>${(ac.flight || "").trim()}</b> (ICAO: ${ac.hex}) <br>` +
+        `- Flokkur: ${ac.category ? ac.category : "Óþekktur"} <br>` +
+        `${altText} <br>` +
+        (ac.totalLengthKm != null
+          ? `- Fluglengd: ${ac.totalLengthKm.toFixed(1)} km <br>`
+          : "") +
+        (ac.hasPosition && ac.distanceKm != null
+          ? `- Fjarlægð frá heimili: ${ac.distanceKm} km`
+          : "- Staðsetning óþekkt")
+      );
 
       if (ac.hasPosition) {
         li.onclick = () => {

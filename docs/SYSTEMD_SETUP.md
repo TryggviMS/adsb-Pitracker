@@ -33,6 +33,10 @@ Stop:
 sudo systemctl stop adsb_ingest
 sudo systemctl stop adsb_flask
 
+Start:
+sudo systemctl start adsb_ingest
+sudo systemctl start adsb_flask
+
 Check status:
 
 systemctl status adsb_ingest
