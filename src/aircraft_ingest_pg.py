@@ -60,6 +60,7 @@ DB_DSN = (
 # HELPERS
 # ============================================================
 
+
 def _safe_float(v, default=0.0) -> float:
     try:
         return float(v)
