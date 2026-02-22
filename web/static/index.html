@@ -74,7 +74,7 @@
       </div>
     </footer>
 
-  </div> <!-- ✅ CLOSE #app -->
+  </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -106,7 +106,6 @@
     });
   </script>
 
-  <!-- ✅ ADD THIS NEW SCRIPT -->
   <script>
     (function () {
       const btn = document.getElementById("sidebar-toggle");
@@ -117,10 +116,13 @@
       });
     })();
   </script>
+
   <script>
+    // Stats should be fetched via nginx (same-origin), NOT directly from port 5000.
     async function updateStats() {
       try {
-        const res = await fetch("http://192.168.0.13:5000/stats", { cache: "no-store" });
+        const res = await fetch("/stats", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
         document.getElementById("stat-total").textContent =
@@ -135,12 +137,11 @@
         document.getElementById("stat-hour").textContent =
           (data.hour || 0).toLocaleString("is-IS");
 
-
         const lastEl = document.getElementById("stat-last");
         if (lastEl) {
           if (data.last_flight_at) {
             const d = new Date(data.last_flight_at);
-            lastEl.textContent = isNaN(d.getTime())
+            lastEl.textContent = Number.isNaN(d.getTime())
               ? "–"
               : d.toLocaleString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
           } else {
@@ -152,43 +153,8 @@
       }
     }
 
-    // initial load
     updateStats();
-
-    // refresh every 30 seconds
     setInterval(updateStats, 30000);
-  </script>
-
-  <script>
-    (function () {
-      const statusEl = document.getElementById("live-status");
-      if (!statusEl) return;
-
-      const dotEl = statusEl.querySelector(".live-dot");
-      const textEl = statusEl.querySelector(".live-text");
-
-      async function updateLiveBadgeFromDocker() {
-        try {
-          const res = await fetch("http://192.168.0.13:5000/api/container-status", { cache: "no-store" });
-          const data = await res.json();
-
-          const running = !!data.running;
-
-          // Update badge text
-          if (textEl) textEl.textContent = running ? "LIVE" : "OFFLINE";
-
-          // Update dot color
-          if (dotEl) dotEl.style.backgroundColor = running ? "#2ecc71" : "#e74c3c";
-        } catch (err) {
-          // If API cannot be reached, show offline
-          if (textEl) textEl.textContent = "OFFLINE";
-          if (dotEl) dotEl.style.backgroundColor = "#e74c3c";
-        }
-      }
-
-      updateLiveBadgeFromDocker();
-      setInterval(updateLiveBadgeFromDocker, 3000); // check every 3 seconds
-    })();
   </script>
 
 </body>
