@@ -44,10 +44,12 @@ pool = ConnectionPool(
 # Routes
 # ------------------------------------------------------------
 
+
 @app.errorhandler(Exception)
 def handle_error(e):
     app.logger.error("Unhandled exception: %s", e)
     return jsonify({"error": "internal server error"}), 500
+
 
 @app.get("/healthz")
 def healthz():
