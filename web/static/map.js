@@ -201,6 +201,39 @@ const aircraftState = {};
 
 const STALE_AFTER = 10;
 
+function fmtTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function fmtDurationSeconds(s) {
+  if (s == null || !isFinite(s) || s < 0) return "—";
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = Math.floor(s % 60);
+  return `${hh.toString().padStart(2, "0")}:${mm.toString().padStart(2, "0")}:${ss.toString().padStart(2, "0")}`;
+}
+
+function fmtDurationPretty(s) {
+  if (s == null || !isFinite(s) || s < 0) return "—";
+
+  const minutes = Math.floor(s / 60);
+  const seconds = Math.floor(s % 60);
+
+  if (minutes > 0) {
+    return `${minutes} mín ${seconds} sek`;
+  } else {
+    return `${seconds} sek`;
+  }
+}
+
+function setSidebarTitle(text) {
+  const el = document.getElementById("sidebar-title");
+  if (el) el.textContent = text;
+}
+
 const liveIconURL = "icons/airplane.png";
 const unknownIconURL = "icons/unknown2.svg";
 const airplaneIconURL = "icons/airplane.png";
@@ -275,6 +308,90 @@ function addGradientLine(feature) {
   return segments;
 }
 
+function updateSidebarFromMidnightPaths(geojson) {
+  const listEl = document.getElementById("aircraft-list");
+  if (!listEl) return;
+
+  setSidebarTitle("Flugvélar frá miðnætti");
+
+  const feats = Array.isArray(geojson?.features) ? geojson.features : [];
+  const c = document.getElementById("sidebar-count");
+  if (c) c.textContent = `Fj. í lista: ${feats.length}`;
+
+  feats.sort((a, b) => {
+    const ta = Date.parse(a?.properties?.end_time || "") || 0;
+    const tb = Date.parse(b?.properties?.end_time || "") || 0;
+    return tb - ta;
+  });
+
+  listEl.innerHTML = "";
+
+  for (const f of feats) {
+    const p = f.properties || {};
+    const hex = p.hex || "—";
+    const flightRaw = (p.flight || "").trim();
+    const flight = flightRaw || "Flugnr óþekkt";
+    const category = p.category || "Óþekktur";
+
+    const t0 = Date.parse(p.start_time || "");
+    const t1 = Date.parse(p.end_time || "");
+    const durSec =
+      Number.isFinite(t0) && Number.isFinite(t1) ? Math.max(0, (t1 - t0) / 1000) : null;
+
+    // "Unknown" in midnight sidebar should behave like live sidebar:
+    // If no callsign/flight is present, show the unknown icon.
+    const isUnknown = !flightRaw;
+
+    const li = document.createElement("li");
+    li.className = "aircraft-item";
+
+    const icon = document.createElement("img");
+    icon.src = isUnknown ? unknownIconURL : liveIconURL;
+    
+    icon.style.width = "30px";
+    icon.style.marginRight = "6px";
+    icon.style.verticalAlign = "middle";
+    li.appendChild(icon);
+
+    li.insertAdjacentHTML(
+      "beforeend",
+      `<b>${flight}</b> (ICAO: ${hex}) <br>` +
+      `- Flokkur: ${category} <br>` +
+      //`- Hæð: Ekki tiltækt <br>` +
+
+      `- Fyrst móttekið: ${fmtTime(p.start_time)} <br>` +
+      `- Síðast móttekið: ${fmtTime(p.end_time)} <br>` +
+      `- Merki frá vél móttekið í ${fmtDurationPretty(durSec)} <br>` +
+      (typeof p.total_length_km === "number"
+        ? `- Lengd flugs: ${p.total_length_km.toFixed(1)} km`
+        : "")
+    );
+
+    // click = zoom to the path (if present on map)
+    li.onclick = () => {
+      const segs = window.pathsByHex?.[hex];
+      if (!segs || segs.length === 0) return;
+
+      let bounds = null;
+      for (const s of segs) {
+        const b = s.getBounds?.();
+        if (!b) continue;
+        bounds = bounds ? bounds.extend(b) : b;
+      }
+      if (bounds) map.fitBounds(bounds.pad(0.15));
+    };
+
+    listEl.appendChild(li);
+  }
+
+  if (feats.length === 0) {
+    const li = document.createElement("li");
+    li.className = "aircraft-item";
+    li.textContent = "Engar slóðir skráðar frá miðnætti.";
+    listEl.appendChild(li);
+  }
+}
+
 async function updateLivePaths() {
   try {
     const mode = window.PATHS_MODE || "live";
@@ -289,14 +406,29 @@ async function updateLivePaths() {
     }
     window.livePathsLayer = [];
 
+    // Index segments by hex so sidebar clicks can zoom to paths
+    window.pathsByHex = {};
+
     // Create new segments
     (geojson.features || []).forEach((feature) => {
+      const hex = feature?.properties?.hex;
       const segs = addGradientLine(feature);
+
+      if (hex && !window.pathsByHex[hex]) window.pathsByHex[hex] = [];
+
       segs.forEach((s) => {
         s.addTo(map);
         window.livePathsLayer.push(s);
+        if (hex) window.pathsByHex[hex].push(s);
       });
     });
+
+    // ✅ Update sidebar in midnight mode
+    if (mode === "midnight") {
+      updateSidebarFromMidnightPaths(geojson);
+    } else {
+      setSidebarTitle("Flugvélar undir eftirliti");
+    }
   } catch (err) {
     console.error("Failed to fetch live paths:", err);
   }
@@ -313,6 +445,12 @@ setInterval(updateLivePaths, 2000);
 // Update aircraft
 // -----------------------------
 async function updateLocalAircraft() {
+  // ✅ In midnight mode, sidebar is driven by /paths_since_midnight
+  // so live aircraft updates must NOT overwrite the sidebar.
+  if ((window.PATHS_MODE || "live") === "midnight") {
+    return;
+  }
+
   const now = Date.now() / 1000;
 
   try {
@@ -335,6 +473,7 @@ async function updateLocalAircraft() {
         category,
         last_seen,
         last_seen_epoch,
+        total_length_km,
       } = ac;
 
       if (!hex) continue;
@@ -346,12 +485,12 @@ async function updateLocalAircraft() {
         typeof last_seen === "number"
           ? last_seen
           : typeof last_seen_epoch === "number"
-          ? last_seen_epoch
-          : now;
+            ? last_seen_epoch
+            : now;
 
       Object.assign(aircraftState[hex], {
         hex,
-        flight: (flight || "").trim() || "Óþekkt vél",
+        flight: (flight || "").trim() || "Flugnr óþekkt",
         alt: alt_baro,
         lat,
         lon,
@@ -359,6 +498,7 @@ async function updateLocalAircraft() {
         category,
         hasPosition: lat != null && lon != null,
         lastSeen: lastSeenEpoch,
+        totalLengthKm: (typeof total_length_km === "number") ? total_length_km : null,
       });
 
       // Marker handling
@@ -407,6 +547,8 @@ async function updateLocalAircraft() {
     const sorted = Object.values(aircraftState).sort(
       (a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0)
     );
+    const c = document.getElementById("sidebar-count");
+    if (c) c.textContent = `Fj. í lista: ${sorted.length}`;
 
     for (const ac of sorted) {
       const age = now - (ac.lastSeen ?? 0);
@@ -426,17 +568,20 @@ async function updateLocalAircraft() {
         ac.alt === "ground"
           ? "Á jörðinni"
           : ac.alt != null && ac.alt !== ""
-          ? `${ac.alt} ft`
-          : "Staðsetning óþekkt";
+            ? `${ac.alt} ft`
+            : "Staðsetning óþekkt";
 
       li.insertAdjacentHTML(
         "beforeend",
         `<b>${(ac.flight || "").trim()}</b> (ICAO: ${ac.hex}) <br>` +
-          `- Flokkur: ${ac.category ? ac.category : "Óþekktur"} <br>` +
-          `${altText} <br>` +
-          (ac.hasPosition && ac.distanceKm != null
-            ? `- Fjarlægð frá heimili: ${ac.distanceKm} km`
-            : "- Staðsetning óþekkt")
+        `- Flokkur: ${ac.category ? ac.category : "Óþekktur"} <br>` +
+        `${altText} <br>` +
+        (ac.totalLengthKm != null
+          ? `- Fluglengd: ${ac.totalLengthKm.toFixed(1)} km <br>`
+          : "") +
+        (ac.hasPosition && ac.distanceKm != null
+          ? `- Fjarlægð frá heimili: ${ac.distanceKm} km`
+          : "- Staðsetning óþekkt")
       );
 
       if (ac.hasPosition) {

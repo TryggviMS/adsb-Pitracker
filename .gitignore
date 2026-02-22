@@ -1,6 +1,10 @@
 # Environment
 .env
 *.env
+.env.api
+.env.ingest
+
+adsb-Pitracker/docs/SYSTEMD_SETUP.md
 
 # Python
 __pycache__/
@@ -22,3 +26,4 @@ db/data/
 # OS / Editor
 .DS_Store
 .vscode/
+docker/postgres/pg_users.sql

@@ -3,46 +3,6 @@
    Database Structure for Aircraft Position & Flight Path Data
    ============================================================ */
 
-
-/* ============================================================
-   QUICK INSPECTION QUERIES
-   ============================================================ */
-
--- Latest aircraft positions
-SELECT *
-FROM public.aircraft_positions_history
-ORDER BY id DESC;
-
--- Approximate result size (subset)
-SELECT pg_size_pretty(SUM(pg_column_size(t))) AS approx_result_size
-FROM (
-    SELECT *
-    FROM public.aircraft_positions_history
-    ORDER BY id DESC
-    LIMIT 1000
-) t;
-
--- Sample live paths
-SELECT *
-FROM public.aircraft_paths_live
-LIMIT 10;
-
--- Latest historical paths
-SELECT *
-FROM public.aircraft_paths_history
-ORDER BY id DESC
-LIMIT 10;
-
-
-/* ============================================================
-   MAINTENANCE
-   ============================================================ */
-
-TRUNCATE TABLE aircraft_positions_history RESTART IDENTITY;
-TRUNCATE TABLE aircraft_paths_live RESTART IDENTITY;
-TRUNCATE TABLE aircraft_paths_history RESTART IDENTITY;
-
-
 /* ============================================================
    TABLE 1 – aircraft_positions_history
    Stores raw aircraft position messages (Insert Only)
@@ -80,6 +40,13 @@ CREATE TABLE public.aircraft_paths_live (
     start_time TIMESTAMP NOT NULL,
     last_seen TIMESTAMP NOT NULL DEFAULT now(),
     geom geometry(LineString, 4326),
+
+    -- total length in km (rounded to 1 decimal), auto-computed from geom
+    total_length_km double precision
+      GENERATED ALWAYS AS (
+        ROUND((ST_Length(geom::geography) / 1000.0)::numeric, 1)::double precision
+      ) STORED,
+
     PRIMARY KEY (hex, flight)
 );
 
@@ -103,7 +70,13 @@ CREATE TABLE public.aircraft_paths_history (
     category TEXT,
     start_time TIMESTAMP NOT NULL,
     end_time TIMESTAMP NOT NULL,
-    geom geometry(LineString, 4326)
+    geom geometry(LineString, 4326),
+
+    -- total length in km (rounded to 1 decimal), auto-computed from geom
+    total_length_km double precision
+      GENERATED ALWAYS AS (
+        ROUND((ST_Length(geom::geography) / 1000.0)::numeric, 1)::double precision
+      ) STORED
 );
 
 -- Indexes

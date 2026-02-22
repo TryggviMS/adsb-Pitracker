@@ -8,7 +8,8 @@
 import json
 import os
 import time
-
+import subprocess
+from flask import jsonify
 import psycopg
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -32,22 +33,26 @@ def live_aircraft():
         cur.execute(
             """
             SELECT
-              hex,
-              flight,
-              category,
-              lat,
-              lon,
-              alt_baro,
-              track,
-              EXTRACT(EPOCH FROM last_seen) AS last_seen_epoch
-            FROM public.aircraft_live
-            WHERE last_seen > now() - interval '60 seconds'
-            ORDER BY last_seen DESC;
+            a.hex,
+            a.flight,
+            a.category,
+            a.lat,
+            a.lon,
+            a.alt_baro,
+            a.track,
+            EXTRACT(EPOCH FROM a.last_seen) AS last_seen_epoch,
+            p.total_length_km
+            FROM public.aircraft_live a
+            LEFT JOIN public.aircraft_paths_live p
+            ON p.hex = a.hex
+            AND p.flight = a.flight
+            WHERE a.last_seen > now() - interval '60 seconds'
+            ORDER BY a.last_seen DESC;
             """
         )
 
         aircraft = []
-        for hex_, flight, category, lat, lon, alt_baro, track, last_seen_epoch in cur.fetchall():
+        for hex_, flight, category, lat, lon, alt_baro, track, last_seen_epoch, total_length_km in cur.fetchall():
             aircraft.append(
                 {
                     "hex": hex_,
@@ -58,6 +63,7 @@ def live_aircraft():
                     "alt_baro": alt_baro,
                     "track": track,
                     "last_seen": last_seen_epoch,
+                    "total_length_km": total_length_km
                 }
             )
 
@@ -133,23 +139,28 @@ def paths_since_midnight():
               WHERE last_seen >= midnight.t0
             )
             SELECT
-              hex,
-              flight,
-              category,
-              MIN(start_time) AS start_time,
-              MAX(end_time)   AS end_time,
-              ST_AsGeoJSON(ST_LineMerge(ST_Collect(geom))) AS geom
-            FROM src
-            WHERE geom IS NOT NULL
-            GROUP BY hex, flight, category
-            ORDER BY MAX(end_time) DESC;
+  hex,
+  flight,
+  category,
+  MIN(start_time) AS start_time,
+  MAX(end_time)   AS end_time,
+  CASE
+    WHEN COUNT(geom) = 0 THEN NULL
+    ELSE ST_AsGeoJSON(ST_LineMerge(ST_Collect(geom)))
+  END AS geom,
+  CASE
+    WHEN COUNT(geom) = 0 THEN NULL
+    ELSE ROUND((ST_Length(ST_LineMerge(ST_Collect(geom))::geography) / 1000.0)::numeric, 1)::double precision
+  END AS total_length_km
+FROM src
+GROUP BY hex, flight, category
+ORDER BY MAX(end_time) DESC;
             """
         )
 
         features = []
-        for hex_, flight, category, start_time, end_time, geom_json in cur.fetchall():
-            if not geom_json:
-                continue
+        for hex_, flight, category, start_time, end_time, geom_json, total_length_km in cur.fetchall():
+         
 
             features.append(
                 {
@@ -160,12 +171,97 @@ def paths_since_midnight():
                         "category": category,
                         "start_time": start_time.isoformat() if start_time else None,
                         "end_time": end_time.isoformat() if end_time else None,
+                        "total_length_km": total_length_km
                     },
-                    "geometry": json.loads(geom_json),
+                    "geometry": json.loads(geom_json) if geom_json else None,
                 }
             )
 
     return jsonify({"type": "FeatureCollection", "features": features})
+
+
+@app.route("/stats")
+def stats():
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            WITH t AS (
+              SELECT
+                date_trunc('day',  now()) AS day0,
+                date_trunc('week', now()) AS week0,
+                now() - interval '1 hour' AS hour0
+            ),
+
+            src AS (
+              -- archived paths
+              SELECT
+                hex,
+                flight,
+                category,
+                start_time,
+                end_time
+              FROM public.aircraft_paths_history
+
+              UNION ALL
+
+              -- live paths: use last_seen as end_time (NOT now())
+              SELECT
+                p.hex,
+                p.flight,
+                p.category,
+                p.start_time,
+                p.last_seen AS end_time
+              FROM public.aircraft_paths_live p
+              WHERE p.last_seen > now() - interval '60 seconds'
+            ),
+
+            grouped AS (
+              SELECT
+                hex,
+                flight,
+                category,
+                MIN(start_time) AS start_time,
+                MAX(end_time)   AS end_time
+              FROM src
+              GROUP BY hex, flight, category
+            )
+
+            SELECT
+              (SELECT COUNT(*) FROM public.aircraft_paths_history) AS total,
+              COUNT(*) FILTER (WHERE end_time >= (SELECT week0 FROM t)) AS week,
+              COUNT(*) FILTER (WHERE end_time >= (SELECT day0  FROM t)) AS today,
+              COUNT(*) FILTER (WHERE end_time >= (SELECT hour0 FROM t)) AS hour,
+              MAX(end_time) AS last_flight_at
+            FROM grouped;
+            """
+        )
+
+        total, week, today, hour, last_flight_at = cur.fetchone()
+
+    return jsonify(
+        {
+            "total": int(total or 0),
+            "week": int(week or 0),
+            "today": int(today or 0),
+            "hour": int(hour or 0),
+            "last_flight_at": last_flight_at.isoformat() if last_flight_at else None,
+        }
+    )
+
+CONTAINER_NAME = "dump1090"
+@app.get("/api/container-status")
+def api_container_status():
+    try:
+        r = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER_NAME],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        running = (r.returncode == 0 and r.stdout.strip() == "true")
+        return jsonify({"running": running})
+    except Exception as e:
+        return jsonify({"running": False, "error": str(e)})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
