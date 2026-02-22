@@ -4,8 +4,6 @@
 .env.api
 .env.ingest
 
-adsb-Pitracker/docs/SYSTEMD_SETUP.md
-
 # Python
 __pycache__/
 *.pyc
