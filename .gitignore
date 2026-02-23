@@ -1,8 +1,6 @@
 # Environment
 .env
 *.env
-.env.api
-.env.ingest
 
 # Python
 __pycache__/
@@ -27,3 +25,7 @@ db/data/
 
 docs/CLOUDFLARE.MD
 cloudflared.deb
+.env.postgres
+.env.api
+.gitignore
+.env.ingest

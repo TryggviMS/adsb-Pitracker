@@ -66,7 +66,7 @@ sudo docker logs -f adsb-web
 ## Start Database (using root level env file)
 
 cd docker/postgres
-sudo docker compose --env-file ../../.env up -d
+sudo docker compose --env-file ../../.env.postgres up -d
 
 
 Return to project root:
@@ -105,3 +105,22 @@ sudo docker rm <container_name>
 
 - No absolute filesystem paths are used.
 - The project can now be moved anywhere without changing Docker commands.
+
+
+# Python
+
+cd docker/python
+docker compose up -d
+
+docker compose logs -f
+docker exec -it postgis_db psql -U admin -d spatial_db -c "SELECT COUNT(*) FROM public.aircraft_paths_history;"
+
+docker exec -it postgis_db psql -U admin -d spatial_db -c "SELECT COUNT(*) FROM public.aircraft_live;"
+
+# Shared network
+the key to cross-compose communication
+Since you're using separate compose files, create one shared network once:
+docker network create adsb_net
+
+In case the compose didnt add postgres to network
+docker network connect adsb_net postgis_db
