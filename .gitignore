@@ -1,8 +1,6 @@
 # Environment
 .env
 *.env
-.env.api
-.env.ingest
 
 # Python
 __pycache__/
