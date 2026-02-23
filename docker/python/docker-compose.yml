@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     env_file:
       - ../../.env.ingest     # DB and dump1090 connection details
+    volumes:
+      - /home/trygg/Documents/adsb-Pitracker/web/static/data:/app/web/static/data  # live dump1090 data
     networks:
       - adsb_net
 

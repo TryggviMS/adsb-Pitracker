@@ -115,8 +115,12 @@ docker compose up -d
 docker compose logs -f
 docker exec -it postgis_db psql -U admin -d spatial_db -c "SELECT COUNT(*) FROM public.aircraft_paths_history;"
 
+docker exec -it postgis_db psql -U admin -d spatial_db -c "SELECT COUNT(*) FROM public.aircraft_live;"
+
 # Shared network
 the key to cross-compose communication
 Since you're using separate compose files, create one shared network once:
 docker network create adsb_net
 
+In case the compose didnt add postgres to network
+docker network connect adsb_net postgis_db
