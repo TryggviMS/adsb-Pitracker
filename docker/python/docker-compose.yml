@@ -1,12 +1,12 @@
 services:
   adsb-ingest:
     build:
-      context: ../..
+      context: ../..          # repo root
       dockerfile: docker/python/Dockerfile
     command: python src/aircraft_ingest_pg.py
     restart: unless-stopped
     env_file:
-      - ../../.env.ingest
+      - ../../.env.ingest     # DB and dump1090 connection details
     networks:
       - adsb_net
 
@@ -17,12 +17,12 @@ services:
     command: gunicorn --bind 0.0.0.0:5000 --workers 2 "src.aircraft_digest_flask:app"
     restart: unless-stopped
     env_file:
-      - ../../.env.api
+      - ../../.env.api        # DB and Flask config
     ports:
-      - "5000:5000"
+      - "5000:5000"           # exposed for WSL2/local dev, nginx uses internal network in prod
     networks:
       - adsb_net
 
 networks:
   adsb_net:
-    external: true
+    external: true            # shared network, create with: docker network create adsb_net
