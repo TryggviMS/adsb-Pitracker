@@ -62,3 +62,9 @@ Retention policy: 30 days
 External SSD is not publicly exposed
 
 This provides safe, rotating, compressed backups suitable for production use.
+
+
+
+### Resompose 
+
+./scripts/recompose.sh
