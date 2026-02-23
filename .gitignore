@@ -27,3 +27,6 @@ docker/postgres/pg_users.sql
 docs/CLOUDFLARE.MD
 cloudflared.deb
 .env.postgres
+.env.api
+.gitignore
+.env.ingest
