@@ -111,3 +111,8 @@ sudo docker rm <container_name>
 
 cd docker/python
 docker compose up -d
+
+# Shared network
+the key to cross-compose communication
+Since you're using separate compose files, create one shared network once:
+bashdocker network create adsb_net

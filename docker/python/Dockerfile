@@ -9,6 +9,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
+# Copy source code and static files
+# CMD is defined per-service in docker-compose.yml
 COPY src/ ./src/
 COPY web/ ./web/
