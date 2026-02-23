@@ -66,7 +66,7 @@ sudo docker logs -f adsb-web
 ## Start Database (using root level env file)
 
 cd docker/postgres
-sudo docker compose --env-file ../../.env up -d
+sudo docker compose --env-file ../../.env.postgres up -d
 
 
 Return to project root:
@@ -105,3 +105,9 @@ sudo docker rm <container_name>
 
 - No absolute filesystem paths are used.
 - The project can now be moved anywhere without changing Docker commands.
+
+
+# Python
+
+cd docker/python
+docker compose up -d
