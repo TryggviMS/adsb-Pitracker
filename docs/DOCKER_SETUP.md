@@ -112,7 +112,11 @@ sudo docker rm <container_name>
 cd docker/python
 docker compose up -d
 
+docker compose logs -f
+docker exec -it postgis_db psql -U admin -d spatial_db -c "SELECT COUNT(*) FROM public.aircraft_paths_history;"
+
 # Shared network
 the key to cross-compose communication
 Since you're using separate compose files, create one shared network once:
-bashdocker network create adsb_net
+docker network create adsb_net
+
