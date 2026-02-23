@@ -1,231 +1,110 @@
 /* ============================================================
-   ADS-B PostgreSQL Schema
-   Database Structure for Aircraft Position & Flight Path Data
-   ============================================================ */
-
-/* ============================================================
-   TABLE 1 – aircraft_positions_history
-   Stores raw aircraft position messages (Insert Only)
+   TABLE: aircraft_positions_history
+   Raw aircraft position messages (Insert Only)
    ============================================================ */
 
 CREATE TABLE public.aircraft_positions_history (
-    id BIGSERIAL PRIMARY KEY,
-    hex TEXT NOT NULL,
-    flight TEXT,
+    id          BIGSERIAL PRIMARY KEY,
+    hex         TEXT NOT NULL,
+    flight      TEXT,
     observed_at TIMESTAMP NOT NULL DEFAULT now(),
-    geom geometry(Point, 4326),      -- nullable
-    data JSONB                      -- raw message
+    geom        geometry(Point, 4326),
+    data        JSONB
 );
 
+CREATE INDEX idx_aircraft_positions_history_hex
+    ON public.aircraft_positions_history(hex);
 
--- Monthly partitions (example)
-CREATE TABLE public.aircraft_positions_history_2026_01
-PARTITION OF public.aircraft_positions_history
-FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+CREATE INDEX idx_aircraft_positions_history_observed_at
+    ON public.aircraft_positions_history(observed_at);
 
-CREATE TABLE public.aircraft_positions_history_2026_02
-PARTITION OF public.aircraft_positions_history
-FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+CREATE INDEX idx_aircraft_positions_history_geom
+    ON public.aircraft_positions_history USING GIST(geom);
 
 
 /* ============================================================
-   TABLE 2 – aircraft_paths_live
+   TABLE: aircraft_live
+   Latest known state per aircraft (Upsert)
+   ============================================================ */
+
+CREATE TABLE IF NOT EXISTS public.aircraft_live (
+    hex      TEXT PRIMARY KEY,
+    flight   TEXT,
+    category TEXT,
+    last_seen TIMESTAMP NOT NULL DEFAULT now(),
+    lat      DOUBLE PRECISION,
+    lon      DOUBLE PRECISION,
+    alt_baro TEXT,
+    track    DOUBLE PRECISION,
+    geom     geometry(Point, 4326),
+    data     JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_aircraft_live_last_seen
+    ON public.aircraft_live(last_seen);
+
+CREATE INDEX IF NOT EXISTS idx_aircraft_live_geom
+    ON public.aircraft_live USING GIST(geom);
+
+
+/* ============================================================
+   TABLE: aircraft_paths_live
    Active flight paths (Insert + Update)
    ============================================================ */
 
 CREATE TABLE public.aircraft_paths_live (
-    hex TEXT NOT NULL,
-    flight TEXT NOT NULL,
-    category TEXT,
-    start_time TIMESTAMP NOT NULL,
-    last_seen TIMESTAMP NOT NULL DEFAULT now(),
-    geom geometry(LineString, 4326),
-
-    -- total length in km (rounded to 1 decimal), auto-computed from geom
-    total_length_km double precision
-      GENERATED ALWAYS AS (
+    hex             TEXT NOT NULL,
+    flight          TEXT NOT NULL,
+    category        TEXT,
+    start_time      TIMESTAMP NOT NULL,
+    last_seen       TIMESTAMP NOT NULL DEFAULT now(),
+    geom            geometry(LineString, 4326),
+    total_length_km DOUBLE PRECISION GENERATED ALWAYS AS (
         ROUND((ST_Length(geom::geography) / 1000.0)::numeric, 1)::double precision
-      ) STORED,
+    ) STORED,
 
     PRIMARY KEY (hex, flight)
 );
 
--- Spatial & time indexes
-CREATE INDEX idx_aircraft_paths_live_geom
-ON public.aircraft_paths_live USING GIST(geom);
+CREATE INDEX idx_aircraft_paths_live_hex
+    ON public.aircraft_paths_live(hex);
 
 CREATE INDEX idx_aircraft_paths_live_last_seen
-ON public.aircraft_paths_live(last_seen);
+    ON public.aircraft_paths_live(last_seen);
+
+CREATE INDEX idx_aircraft_paths_live_geom
+    ON public.aircraft_paths_live USING GIST(geom);
 
 
 /* ============================================================
-   TABLE 3 – aircraft_paths_history
+   TABLE: aircraft_paths_history
    Completed flight paths (Insert Only)
    ============================================================ */
 
 CREATE TABLE public.aircraft_paths_history (
-    id BIGSERIAL PRIMARY KEY,
-    hex TEXT NOT NULL,
-    flight TEXT NOT NULL,
-    category TEXT,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
-    geom geometry(LineString, 4326),
-
-    -- total length in km (rounded to 1 decimal), auto-computed from geom
-    total_length_km double precision
-      GENERATED ALWAYS AS (
+    id              BIGSERIAL PRIMARY KEY,
+    hex             TEXT NOT NULL,
+    flight          TEXT NOT NULL,
+    category        TEXT,
+    start_time      TIMESTAMP NOT NULL,
+    end_time        TIMESTAMP NOT NULL,
+    geom            geometry(LineString, 4326),
+    total_length_km DOUBLE PRECISION GENERATED ALWAYS AS (
         ROUND((ST_Length(geom::geography) / 1000.0)::numeric, 1)::double precision
-      ) STORED
+    ) STORED
 );
-
--- Indexes
-CREATE INDEX idx_aircraft_paths_history_geom
-ON public.aircraft_paths_history USING GIST(geom);
 
 CREATE INDEX idx_aircraft_paths_history_hex
-ON public.aircraft_paths_history(hex);
+    ON public.aircraft_paths_history(hex);
 
-CREATE INDEX idx_aircraft_paths_history_time
-ON public.aircraft_paths_history(start_time);
+CREATE INDEX idx_aircraft_paths_history_flight
+    ON public.aircraft_paths_history(flight);
 
+CREATE INDEX idx_aircraft_paths_history_start_time
+    ON public.aircraft_paths_history(start_time);
 
-/* ============================================================
-   INSERT LOGIC – TABLE 1
-   Insert Raw Position Message
-   ============================================================ */
+CREATE INDEX idx_aircraft_paths_history_end_time
+    ON public.aircraft_paths_history(end_time);
 
-INSERT INTO public.aircraft_positions_history (
-    hex,
-    flight,
-    observed_at,
-    geom,
-    data
-)
-VALUES (
-    :hex,
-    :flight,
-    now(),
-
-    CASE
-        WHEN :lat IS NOT NULL AND :lon IS NOT NULL
-        THEN ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
-        ELSE NULL
-    END,
-
-    :json_payload::jsonb
-);
-
-
-/* ============================================================
-   UPSERT LOGIC – TABLE 2
-   Update or Append Active Flight Path
-   ============================================================ */
-
-INSERT INTO public.aircraft_paths_live (
-    hex,
-    flight,
-    category,
-    start_time,
-    last_seen,
-    geom
-)
-VALUES (
-    :hex,
-    :flight,
-    :category,
-    now(),
-    now(),
-    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
-)
-ON CONFLICT (hex, flight)
-DO UPDATE
-SET
-    geom = ST_AddPoint(
-        aircraft_paths_live.geom,
-        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
-    ),
-    last_seen = now();
-
-
-/* ============================================================
-   ARCHIVE LOGIC – TABLE 3
-   Move Timed-Out Flights to History
-   ============================================================ */
-
-BEGIN;
-
-INSERT INTO public.aircraft_paths_history (
-    hex,
-    flight,
-    category,
-    start_time,
-    end_time,
-    geom
-)
-SELECT
-    hex,
-    flight,
-    category,
-    start_time,
-    last_seen,
-    geom
-FROM public.aircraft_paths_live
-WHERE last_seen < now() - interval '10 minutes';
-
-DELETE FROM public.aircraft_paths_live
-WHERE last_seen < now() - interval '10 minutes';
-
-COMMIT;
-
-
-
-/* ============================================================
-   TABLE 1B – aircraft_live   (NEW)
-   Latest known state per aircraft (Upsert)
-   Used for map markers + sidebar so it stays in sync with /live_paths
-   ============================================================ */
-
-CREATE TABLE IF NOT EXISTS public.aircraft_live (
-    hex TEXT PRIMARY KEY,
-    flight TEXT,
-    category TEXT,
-    last_seen TIMESTAMP NOT NULL DEFAULT now(),
-
-    -- latest state (nullable)
-    lat DOUBLE PRECISION,
-    lon DOUBLE PRECISION,
-    alt_baro TEXT,                   -- dump1090 may return 'ground'
-    track DOUBLE PRECISION,
-
-    geom geometry(Point, 4326),       -- derived from lat/lon
-    data JSONB                        -- optional: latest raw payload
-);
-
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_aircraft_live_last_seen
-ON public.aircraft_live(last_seen);
-
-CREATE INDEX IF NOT EXISTS idx_aircraft_live_geom
-ON public.aircraft_live USING GIST(geom);
-
-/* ============================================================
-   LOGICAL FLOW SUMMARY
-   ============================================================
-
-Incoming message:
-    → Insert into aircraft_positions_history
-
-If lat/lon exists:
-    → Upsert into aircraft_paths_live
-
-Background worker:
-    → Move timed-out rows to aircraft_paths_history
-
-Table Behavior Summary:
-
-aircraft_positions_history  → Insert only
-aircraft_paths_live         → Insert + Update
-aircraft_paths_history      → Insert only
-
-============================================================ */
+CREATE INDEX idx_aircraft_paths_history_geom
+    ON public.aircraft_paths_history USING GIST(geom);
