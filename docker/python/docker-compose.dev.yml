@@ -1,6 +1,7 @@
 services:
   adsb-ingest:
     volumes:
+      - ../../src:/app/src
       - ../../web/static/data:/app/web/static/data
 
   adsb-flask:
@@ -8,3 +9,15 @@ services:
       - ../../src:/app/src
       - ../../web:/app/web
     command: flask --app src/aircraft_digest_flask run --host 0.0.0.0 --port 5000 --debug
+
+  seed-db:
+    build:
+      context: ../..
+      dockerfile: docker/python/Dockerfile
+    command: python scripts/seed_db.py
+    env_file:
+      - ../../.env.ingest
+    networks:
+      - adsb_net
+    profiles:
+      - seed  # only runs when explicitly called

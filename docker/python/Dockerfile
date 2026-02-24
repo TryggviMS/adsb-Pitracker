@@ -13,3 +13,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 # CMD is defined per-service in docker-compose.yml
 COPY src/ ./src/
 COPY web/ ./web/
+COPY scripts/ ./scripts/
