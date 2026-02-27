@@ -125,3 +125,12 @@ Cloudflare Tunnel
    ↓
 Browser (geoform.work)
 ```
+
+
+## 🏗 To-Do
+
+- Categories
+- Hex codes
+- Landhelgisgæslan
+- Airlines
+- Quality of signal
