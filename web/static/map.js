@@ -372,19 +372,8 @@ function updateSidebarFromMidnightPaths(geojson) {
         ? `- Lengd flugs: ${p.total_length_km.toFixed(1)} km`
         : "")
     );
-    // click = zoom to the path (if present on map)
-    li.onclick = () => {
-      const segs = window.pathsByHex?.[hex];
-      if (!segs || segs.length === 0) return;
-
-      let bounds = null;
-      for (const s of segs) {
-        const b = s.getBounds?.();
-        if (!b) continue;
-        bounds = bounds ? bounds.extend(b) : b;
-      }
-      if (bounds) map.fitBounds(bounds.pad(0.15));
-    };
+    //In your map.js you have two functions that build the sidebar list. Each one has a click handler on the list item
+li.onclick = () => openAircraftDetail(hex);
 
     listEl.appendChild(li);
   }
@@ -580,7 +569,7 @@ async function updateLocalAircraft() {
         "beforeend",
         `<b>${escapeHtml((ac.flight || "").trim())}</b> (ICAO: ${escapeHtml(ac.hex)}) <br>` +
         `- Flokkur: ${escapeHtml(ac.category || "Óþekktur")} <br>` +
-        `${altText} <br>` +
+        `- Hæð: ${altText} <br>` +
         (ac.totalLengthKm != null
           ? `- Fluglengd: ${ac.totalLengthKm.toFixed(1)} km <br>`
           : "") +
@@ -589,12 +578,7 @@ async function updateLocalAircraft() {
           : "- Staðsetning óþekkt")
       );
 
-      if (ac.hasPosition) {
-        li.onclick = () => {
-          map.setView([ac.lat, ac.lon], 12);
-          aircraftMarkers[ac.hex]?.openTooltip();
-        };
-      }
+li.onclick = () => openAircraftDetail(ac.hex);
 
       listEl.appendChild(li);
     }
@@ -602,6 +586,99 @@ async function updateLocalAircraft() {
     console.error("Failed to load live_aircraft:", err);
   }
 }
+
+// -----------------------------
+// Aircraft Detail Panel
+// -----------------------------
+const detailPanel = document.getElementById("detail-panel");
+const detailBackdrop = document.getElementById("detail-backdrop");
+const detailContent = document.getElementById("detail-content");
+const detailCloseBtn = document.getElementById("detail-close");
+
+function closeAircraftDetail() {
+  detailPanel.classList.remove("open");
+  detailPanel.setAttribute("aria-hidden", "true");
+  detailBackdrop.classList.remove("open");
+}
+
+detailCloseBtn.addEventListener("click", closeAircraftDetail);
+detailBackdrop.addEventListener("click", closeAircraftDetail);
+
+function val(v, suffix = "") {
+  if (v === null || v === undefined || v === "") return "—";
+  return escapeHtml(String(v)) + suffix;
+}
+
+function detailRow(label, value, highlight = false) {
+  if (value === null || value === undefined || value === "") return "";
+  return `
+    <div class="detail-row">
+      <span class="detail-label">${label}</span>
+      <span class="detail-value${highlight ? " highlight" : ""}">${val(value)}</span>
+    </div>`;
+}
+
+async function openAircraftDetail(hex) {
+  // Open panel immediately with loading state
+  detailContent.innerHTML = '<div class="detail-loading">Hleður...</div>';
+  detailPanel.classList.add("open");
+  detailPanel.setAttribute("aria-hidden", "false");
+  detailBackdrop.classList.add("open");
+
+  try {
+    const resp = await fetch(`/aircraft/${hex}`, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const d = await resp.json();
+
+    const flight = (d.flight || "").trim() || "Flugnr óþekkt";
+    const altText = d.alt_baro === "ground"
+      ? "Á jörðinni"
+      : d.alt_baro != null ? `${d.alt_baro} ft` : null;
+
+    detailContent.innerHTML = `
+      <div class="detail-header">
+        <div class="detail-flight">✈ ${escapeHtml(flight)}</div>
+        ${d.registration
+          ? `<div class="detail-registration">${escapeHtml(d.registration)}</div>`
+          : ""}
+      </div>
+
+      <div class="detail-section-title">Staða</div>
+      ${detailRow("Hæð", altText)}
+      ${detailRow("Hraði", d.gs != null ? `${d.gs} kn` : null)}
+      ${detailRow("Stefna", d.track != null ? `${d.track}°` : null)}
+      ${detailRow("Squawk", d.squawk)}
+      ${detailRow("RSSI", d.rssi != null ? `${d.rssi} dBFS` : null, true)}
+
+      <div class="detail-section-title">Skráning</div>
+      ${detailRow("ICAO hex", d.hex)}
+      ${detailRow("Skráningarnúmer", d.registration)}
+      ${detailRow("Land", d.country)}
+      ${detailRow("Eigandi", d.owner)}
+      ${detailRow("Flugfélag", d.operator || d.operatorcallsign)}
+      ${detailRow("ICAO flugfélag", d.operatoricao)}
+
+      <div class="detail-section-title">Loftfar</div>
+      ${detailRow("Framleiðandi", d.manufacturername)}
+      ${detailRow("Gerð", d.model)}
+      ${detailRow("Tegundarkóði", d.typecode)}
+      ${detailRow("Raðnúmer", d.serialnumber)}
+      ${detailRow("Vélar", d.engines)}
+      ${detailRow("Byggt", d.built)}
+
+      <div class="detail-section-title">Flokkur</div>
+      ${detailRow("Kóði", d.category)}
+      ${detailRow("Enska", d.category_en)}
+      ${detailRow("Íslenska", d.category_is)}
+    `;
+  } catch (err) {
+    detailContent.innerHTML = `
+      <div class="detail-loading">Ekki tókst að sækja gögn.</div>`;
+    console.error("openAircraftDetail failed:", err);
+  }
+}
+
+window.openAircraftDetail = openAircraftDetail;
 
 // -----------------------------
 // Start
