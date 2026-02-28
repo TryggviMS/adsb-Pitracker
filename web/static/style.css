@@ -403,3 +403,163 @@ html, body {
 }
 
 
+/* -----------------------------
+   Aircraft Detail Panel
+----------------------------- */
+.detail-panel {
+  position: fixed;
+  top: 58px; /* below header */
+  left: -380px;
+  width: 340px;
+  bottom: 34px; /* above footer */
+  z-index: 1500;
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.detail-panel.open {
+  left: 0;
+  pointer-events: all;
+}
+
+.detail-panel-inner {
+  height: 100%;
+  margin: 12px 0 12px 12px;
+  background: rgba(8, 18, 32, 0.97);
+  border: 1px solid rgba(120, 170, 220, 0.3);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detail-close {
+  position: absolute;
+  top: 20px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e8eef7;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  z-index: 1;
+}
+
+.detail-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.detail-content {
+  padding: 20px 18px;
+  overflow-y: auto;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+}
+
+.detail-loading {
+  color: rgba(232, 238, 247, 0.5);
+  font-size: 13px;
+  text-align: center;
+  padding-top: 40px;
+}
+
+/* Detail header (flight + registration) */
+.detail-header {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(120, 170, 220, 0.15);
+}
+
+.detail-flight {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.detail-registration {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(120, 170, 220, 0.9);
+  letter-spacing: 0.5px;
+}
+
+/* Section title */
+.detail-section-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(120, 170, 220, 0.6);
+  margin: 16px 0 8px 0;
+}
+
+/* Row */
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  color: rgba(232, 238, 247, 0.5);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.detail-value {
+  color: #e8eef7;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+.detail-value.highlight {
+  color: #18ff8b;
+}
+
+/* Backdrop */
+.detail-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.detail-backdrop.open {
+  display: block;
+}
+
+/* Mobile adjustments */
+@media (max-width: 700px) {
+  .detail-panel {
+    top: 0;
+    bottom: 0;
+    width: 85vw;
+    left: -90vw;
+  }
+
+  .detail-panel-inner {
+    margin: 0;
+    border-radius: 0 14px 14px 0;
+  }
+}

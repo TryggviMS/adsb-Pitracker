@@ -75,7 +75,16 @@
     </footer>
 
   </div>
-
+  <!-- Aircraft Detail Panel -->
+  <div id="detail-panel" class="detail-panel" aria-hidden="true">
+    <div class="detail-panel-inner">
+      <button id="detail-close" class="detail-close" aria-label="Loka">✕</button>
+      <div id="detail-content" class="detail-content">
+        <div class="detail-loading">Hleður...</div>
+      </div>
+    </div>
+  </div>
+  <div id="detail-backdrop" class="detail-backdrop"></div>
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://rawcdn.githack.com/bbecquet/Leaflet.RotatedMarker/master/leaflet.rotatedMarker.js"></script>
