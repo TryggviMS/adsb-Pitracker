@@ -29,3 +29,5 @@ cloudflared.deb
 .env.api
 .gitignore
 .env.ingest
+ADSB/*.csv
+ADSB/aircraft-database-complete-2025-08.csv
