@@ -17,7 +17,7 @@ from pathlib import Path
 
 DATA_FILE = Path(__file__).parent.parent / "web" / "static" / "data" / "aircraft.json"
 
-POLL_SECONDS = 2
+POLL_SECONDS = 6
 
 CENTER_LAT = 64.13
 CENTER_LON = -21.94
