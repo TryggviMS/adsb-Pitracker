@@ -114,7 +114,6 @@ Use the script to bring all containers down and back up in the correct order:
 
     ./scripts/recompose.sh
     ./scripts/recompose.sh --dev
-    ./scripts/recompose.sh --dev --seed
 
 
 ---
