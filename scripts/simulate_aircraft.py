@@ -22,15 +22,19 @@ POLL_SECONDS = 6
 CENTER_LAT = 64.13
 CENTER_LON = -21.94
 
+
+
+
+
+
 DUMMY_AIRCRAFT = [
-    {"hex": "4cc581", "flight": "ICE501  ", "category": "A3", "squawk": "2143"},
-    {"hex": "4cc4d1", "flight": "ICE48R  ", "category": "A2", "squawk": "2366"},
-    {"hex": "4cc2a6", "flight": "ICE63L  ", "category": "A4", "squawk": "3441"},
-    {"hex": "3c6444", "flight": "DLH456  ", "category": "A3", "squawk": "1234"},
-    {"hex": "a12345", "flight": "AAL789  ", "category": "A3", "squawk": "5678"},
-    {"hex": "e12345", "flight": "RYR001  ", "category": "A2", "squawk": "4321"},
-    {"hex": "4ac8a8", "flight": "",          "category": "A5", "squawk": "0000"},
-    {"hex": "4cc547", "flight": "",          "category": "A3", "squawk": "0000"},
+    {"hex": "4cc274", "flight": "ICE501  ", "category": "A3", "squawk": "2143"},
+    {"hex": "4cc275", "flight": "ICE48R  ", "category": "A2", "squawk": "2366"},
+    {"hex": "4cc276", "flight": "ICE63L  ", "category": "A4", "squawk": "3441"},
+    {"hex": "4cc277", "flight": "DLH456  ", "category": "A3", "squawk": "1234"},
+    {"hex": "4cc278", "flight": "RYR001  ", "category": "A2", "squawk": "4321"},
+    {"hex": "4cc279", "flight": "",          "category": "A5", "squawk": "0000"},
+    {"hex": "4cc27a", "flight": "",          "category": "A3", "squawk": "0000"},
 ]
 
 # How long aircraft stay visible/hidden (in ticks)

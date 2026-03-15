@@ -183,12 +183,16 @@ CREATE TABLE IF NOT EXISTS public.aircraft_registry (
 GRANT CONNECT ON DATABASE spatial_db TO adsb_api, adsb_ingest;
 GRANT USAGE ON SCHEMA public TO adsb_api, adsb_ingest;
 
+-- API: read-only
 GRANT SELECT ON TABLE
     public.aircraft_live,
     public.aircraft_paths_live,
-    public.aircraft_paths_history
+    public.aircraft_paths_history,
+    public.aircraft_registry,
+    public.aircraft_categories
 TO adsb_api;
 
+-- INGEST: write privileges
 GRANT SELECT, INSERT ON TABLE
     public.aircraft_positions_history
 TO adsb_ingest;
