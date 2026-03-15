@@ -76,6 +76,6 @@ ADD COLUMN added_at TIMESTAMP;
 UPDATE aircraft_registry
 SET added_at = NOW();
 
---## (DEV) bashpsql -h localhost -p 5433 -U admin -d spatial_db
+--## (DEV) psql -h localhost -p 5433 -U admin -d spatial_db
 --Then once you're at the spatial_db=# prompt:
---> sql\copy aircraft_registry FROM '/home/trygg/adsb-Pitracker/ADSB/aircraft-database-complete-2025-08.csv' WITH (FORMAT csv, HEADER true, QUOTE '''', NULL '');
+--> \copy aircraft_registry FROM '/home/trygg/adsb-Pitracker/ADSB/aircraft-database-complete-2025-08.csv' WITH (FORMAT csv, HEADER true, QUOTE '''', NULL '');

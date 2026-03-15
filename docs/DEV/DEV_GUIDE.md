@@ -105,11 +105,7 @@ This starts Postgres, Python (ingest + Flask), and nginx in dev mode with live s
 ./scripts/recompose.sh --dev
 ```
 
-### Start with dummy aircraft data
 
-```bash
-./scripts/recompose.sh --dev --seed
-```
 
 ### Simulate live aircraft movement
 
