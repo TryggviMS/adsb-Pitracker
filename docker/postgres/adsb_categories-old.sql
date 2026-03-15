@@ -69,13 +69,3 @@ CREATE TABLE aircraft_registry (
     typecode            TEXT,
     vdl                 TEXT
 );
-
-ALTER TABLE aircraft_registry
-ADD COLUMN added_at TIMESTAMP;
-
-UPDATE aircraft_registry
-SET added_at = NOW();
-
---## (DEV) psql -h localhost -p 5433 -U admin -d spatial_db
---Then once you're at the spatial_db=# prompt:
---> \copy aircraft_registry FROM '/home/trygg/adsb-Pitracker/ADSB/aircraft-database-complete-2025-08.csv' WITH (FORMAT csv, HEADER true, QUOTE '''', NULL '');
