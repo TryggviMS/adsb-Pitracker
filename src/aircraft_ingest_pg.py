@@ -32,9 +32,9 @@ ARCHIVE_TIMEOUT_SECONDS = int(os.environ.get("ARCHIVE_TIMEOUT_SECONDS", "30"))
 MAX_SEEN_POS_SECONDS_FOR_LINE = int(os.environ.get("MAX_SEEN_POS_SECONDS_FOR_LINE", "30"))
 
 # Path history acceptance thresholds ("truth policy")
-MIN_DURATION_SECONDS = int(os.environ.get("MIN_DURATION_SECONDS", "30"))
-MIN_POINTS = int(os.environ.get("MIN_POINTS", "6"))
-MIN_DISTANCE_KM = float(os.environ.get("MIN_DISTANCE_KM", "0.5"))
+MIN_DURATION_SECONDS = int(os.environ.get("MIN_DURATION_SECONDS", "20"))
+MIN_POINTS = int(os.environ.get("MIN_POINTS", "4"))
+MIN_DISTANCE_KM = float(os.environ.get("MIN_DISTANCE_KM", "0.3"))
 
 # --- Aircraft JSON location ---
 DEFAULT_DATA_FILE = Path.cwd() / "web" / "static" / "data" / "aircraft.json"
