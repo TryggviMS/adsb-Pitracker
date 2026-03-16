@@ -12,6 +12,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
+      - ./init-registry.sh:/docker-entrypoint-initdb.d/init-registry.sh:ro
+      - ../../ADSB:/ADSB:ro
+
     shm_size: 1g
     networks:
       - adsb_net

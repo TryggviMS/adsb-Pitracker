@@ -283,3 +283,120 @@ def stats():
             "last_flight_at": last_flight_at.isoformat() if last_flight_at else None,
         }
     )
+
+
+@app.get("/aircraft/<hex>")
+def aircraft_detail(hex):
+    """Return registry + live data for a single aircraft."""
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    l.hex,
+                    l.flight,
+                    l.category,
+                    l.lat,
+                    l.lon,
+                    l.alt_baro,
+                    l.track,
+                    l.last_seen,
+                    l.data,
+                    r.registration,
+                    r.manufacturername,
+                    r.model,
+                    r.typecode,
+                    r.operator,
+                    r.operatorcallsign,
+                    r.operatoricao,
+                    r.owner,
+                    r.country,
+                    r.serialnumber,
+                    r.built,
+                    r.engines,
+                    c.description_en,
+                    c.description_is
+                FROM public.aircraft_live l
+                LEFT JOIN aircraft_registry r ON r.icao24 = l.hex
+                LEFT JOIN aircraft_categories c ON c.code = l.category
+                WHERE l.hex = %(hex)s
+                """,
+                {"hex": hex.lower()},
+            )
+
+            row = cur.fetchone()
+
+    if row is None:
+        # Aircraft not in live table — try registry only
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                        r.registration,
+                        r.manufacturername,
+                        r.model,
+                        r.typecode,
+                        r.operator,
+                        r.operatorcallsign,
+                        r.operatoricao,
+                        r.owner,
+                        r.country,
+                        r.serialnumber,
+                        r.built,
+                        r.engines,
+                        c.description_en,
+                        c.description_is
+                    FROM aircraft_registry r
+                    LEFT JOIN aircraft_categories c ON c.code = r.categorydescription
+                    WHERE r.icao24 = %(hex)s
+                    """,
+                    {"hex": hex.lower()},
+                )
+                row = cur.fetchone()
+
+    if row is None:
+        return jsonify({"error": "not found"}), 404
+
+    (
+        hex_, flight, category, lat, lon, alt_baro, track, last_seen, data,
+        registration, manufacturername, model, typecode, operator,
+        operatorcallsign, operatoricao, owner, country, serialnumber,
+        built, engines, description_en, description_is,
+    ) = row
+
+    return jsonify({
+        "hex": hex_,
+        "flight": (flight or "").strip(),
+        "category": category,
+        "category_en": description_en,
+        "category_is": description_is,
+        "lat": lat,
+        "lon": lon,
+        "alt_baro": alt_baro,
+        "track": track,
+        "last_seen": last_seen.isoformat() if last_seen else None,
+        "registration": registration,
+        "manufacturername": manufacturername,
+        "model": model,
+        "typecode": typecode,
+        "operator": operator,
+        "operatorcallsign": operatorcallsign,
+        "operatoricao": operatoricao,
+        "owner": owner,
+        "country": country,
+        "serialnumber": serialnumber,
+        "built": str(built) if built else None,
+        "engines": engines,
+        "gs": data.get("gs") if data else None,
+        "rssi": data.get("rssi") if data else None,
+        "squawk": data.get("squawk") if data else None,
+    })
+
+
+# This handles two cases — aircraft currently in `aircraft_live` (full data), and aircraft that have already been archived but are still in the registry (registry only, no live fields).
+
+# Once you've added this and restarted Flask, test it with:
+
+# http://localhost:<port>/aircraft/4cc4d1
