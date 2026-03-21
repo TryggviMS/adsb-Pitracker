@@ -44,7 +44,9 @@ docker compose up -d
 echo "==> Fixing static data directory permissions"
 mkdir -p $REPO/web/static/data
 sudo chown -R $(whoami):$(whoami) $REPO/web/static/data/
-echo "==> Copying seed aircraft.json"
-cp $REPO/docs/DEV/aircraft_for_dev.json $REPO/web/static/data/aircraft.json
+if [ "$DEV" = true ]; then
+  echo "==> Copying seed aircraft.json (dev only)"
+  cp $REPO/docs/DEV/aircraft_for_dev.json $REPO/web/static/data/aircraft.json
+fi
 echo "==> Done. Network status:"
 docker network inspect adsb_net | grep Name

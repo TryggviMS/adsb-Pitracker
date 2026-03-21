@@ -134,3 +134,5 @@ Browser (geoform.work)
 - Landhelgisgæslan
 - Airlines
 - Quality of signal
+
+- Fix docker/postgres/init-registry.sh
