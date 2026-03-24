@@ -393,4 +393,3 @@ def aircraft_detail(hex):
         "rssi": data.get("rssi") if data else None,
         "squawk": data.get("squawk") if data else None,
     })
-
