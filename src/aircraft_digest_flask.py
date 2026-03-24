@@ -323,17 +323,34 @@ def aircraft_detail(hex):
                 """,
                 {"hex": hex.lower()},
             )
-
             row = cur.fetchone()
 
     if row is None:
-        # Aircraft not in live table — try registry only
+        # Aircraft not in live table — look up category from path tables,
+        # then optionally enrich with registry. Start from history so we
+        # always get a row even if the hex is not in the registry.
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
+                    WITH src AS (
+                        SELECT hex, category FROM public.aircraft_paths_history
+                        WHERE hex = %(hex)s AND category IS NOT NULL
+                        UNION ALL
+                        SELECT hex, category FROM public.aircraft_paths_live
+                        WHERE hex = %(hex)s AND category IS NOT NULL
+                        LIMIT 1
+                    )
                     SELECT
-                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                        src.hex,
+                        NULL::text AS flight,
+                        src.category,
+                        NULL::double precision AS lat,
+                        NULL::double precision AS lon,
+                        NULL::text AS alt_baro,
+                        NULL::double precision AS track,
+                        NULL::timestamptz AS last_seen,
+                        NULL::jsonb AS data,
                         r.registration,
                         r.manufacturername,
                         r.model,
@@ -348,9 +365,9 @@ def aircraft_detail(hex):
                         r.engines,
                         c.description_en,
                         c.description_is
-                    FROM aircraft_registry r
-                    LEFT JOIN aircraft_categories c ON c.code = r.categorydescription
-                    WHERE r.icao24 = %(hex)s
+                    FROM src
+                    LEFT JOIN aircraft_registry r ON r.icao24 = src.hex
+                    LEFT JOIN aircraft_categories c ON c.code = src.category
                     """,
                     {"hex": hex.lower()},
                 )
