@@ -30,3 +30,4 @@ cloudflared.deb
 .gitignore
 .env.ingest
 ADSB/
+scripts/random_sql.sql
