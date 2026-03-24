@@ -393,10 +393,3 @@ def aircraft_detail(hex):
         "rssi": data.get("rssi") if data else None,
         "squawk": data.get("squawk") if data else None,
     })
-
-
-# This handles two cases — aircraft currently in `aircraft_live` (full data), and aircraft that have already been archived but are still in the registry (registry only, no live fields).
-
-# Once you've added this and restarted Flask, test it with:
-
-# http://localhost:<port>/aircraft/4cc4d1
