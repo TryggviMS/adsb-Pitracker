@@ -3,7 +3,7 @@
 // -----------------------------
 const RKV = { lat: 64.1300, lon: -21.9400 };
 const KEF = { lat: 63.9850, lon: -22.6056 };
-const CIRCLE_CENTER = { lat: 64.111092, lon: -22.018843 };
+const CIRCLE_CENTER = { lat: 64.1051092, lon: -22.018843 };
 
 window.map = L.map("map").setView([RKV.lat, RKV.lon], 10);
 const map = window.map;
@@ -183,7 +183,7 @@ const airportIcon = L.icon({
 });
 
 L.marker([CIRCLE_CENTER.lat, CIRCLE_CENTER.lon], { icon: homeIcon, interactive: false })
-  .bindTooltip("<b>Sjávargata 20</b>", { direction: "top" })
+  .bindTooltip("<b>Á</b>", { direction: "top" })
   .addTo(map);
 
 L.marker([RKV.lat, RKV.lon], { icon: airportIcon, interactive: false })
