@@ -207,7 +207,7 @@ function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString("is-IS", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
 function fmtDurationSeconds(s) {
@@ -643,14 +643,14 @@ async function openAircraftDetail(hex) {
           : ""}
       </div>
 
-      <div class="detail-section-title">Staða</div>
+      <div class="detail-section-title">Staða flugs</div>
       ${detailRow("Hæð", altText)}
       ${detailRow("Hraði", d.gs != null ? `${d.gs} kn` : null)}
       ${detailRow("Stefna", d.track != null ? `${d.track}°` : null)}
       ${detailRow("Squawk", d.squawk)}
       ${detailRow("RSSI", d.rssi != null ? `${d.rssi} dBFS` : null, true)}
 
-      <div class="detail-section-title">Skráning</div>
+      <div class="detail-section-title">Skráning vélag</div>
       ${detailRow("ICAO hex", d.hex)}
       ${detailRow("Skráningarnúmer", d.registration)}
       ${detailRow("Land", d.country)}
@@ -658,7 +658,7 @@ async function openAircraftDetail(hex) {
       ${detailRow("Flugfélag", d.operator || d.operatorcallsign)}
       ${detailRow("ICAO flugfélag", d.operatoricao)}
 
-      <div class="detail-section-title">Loftfar</div>
+      <div class="detail-section-title">Upplýsingar um vél</div>
       ${detailRow("Framleiðandi", d.manufacturername)}
       ${detailRow("Gerð", d.model)}
       ${detailRow("Tegundarkóði", d.typecode)}
@@ -668,8 +668,9 @@ async function openAircraftDetail(hex) {
 
       <div class="detail-section-title">Flokkur</div>
       ${detailRow("Kóði", d.category)}
-      ${detailRow("Enska", d.category_en)}
       ${detailRow("Íslenska", d.category_is)}
+      ${detailRow("Enska", d.category_en)}
+
     `;
   } catch (err) {
     detailContent.innerHTML = `
