@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>ADS-B Flugvélakort í rauntíma</title>
+  <title>NESFLUG.COM</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Leaflet CSS -->
@@ -22,7 +22,7 @@
     <header id="header">
 
       <div class="header-left">
-        ✈️ ADS-B merkjamóttaka
+        NESFLUG.COM ✈️ ADS-B merkjamóttaka
       </div>
 
       <div id="global-stats" class="header-center" aria-label="Tölfræði">
@@ -65,14 +65,39 @@
       </aside>
     </main>
 
-    <footer id="footer">
-      <div class="footer-left">
-        Staðsetning móttakara: Álftanes
-      </div>
-      <div class="footer-right">
-        ADS-B gögn · RTL-SDR 1090 móttakari
-      </div>
-    </footer>
+<footer id="footer">
+  <div class="footer-left">
+    Staðsetning móttakara: Álftanes
+  </div>
+
+  <!-- Center GitHub link -->
+  <div class="footer-center">
+    <a href="https://github.com/YOUR_USERNAME/YOUR_REPO"
+       target="_blank"
+       class="github-link"
+       aria-label="GitHub repository"
+       title="Skoða kóða á GitHub">
+       
+      <!-- GitHub icon (inline SVG for sharp rendering) -->
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12 2C6.477 2 2 6.58 2 12.253c0 4.546 2.865 8.405 6.839 9.775.5.092.682-.223.682-.496
+        0-.245-.009-.896-.014-1.758-2.782.617-3.369-1.371-3.369-1.371-.455-1.184-1.11-1.5-1.11-1.5-.908-.64.069-.627.069-.627
+        1.004.072 1.532 1.06 1.532 1.06.892 1.573 2.341 1.118 2.91.855.091-.664.349-1.118.635-1.375
+        -2.22-.26-4.555-1.135-4.555-5.051 0-1.116.39-2.028 1.029-2.744-.103-.261-.446-1.303.098-2.717
+        0 0 .84-.275 2.75 1.049A9.37 9.37 0 0112 6.844c.85.004 1.705.116 2.505.34
+        1.909-1.324 2.748-1.049 2.748-1.049.546 1.414.202 2.456.1 2.717.64.716 1.028 1.628 1.028 2.744
+        0 3.926-2.338 4.787-4.566 5.042.359.318.678.945.678 1.905
+        0 1.375-.012 2.484-.012 2.823 0 .275.18.592.688.492A10.02 10.02 0 0022 12.253C22 6.58 17.523 2 12 2z"/>
+      </svg>
+
+      GitHub
+    </a>
+  </div>
+
+  <div class="footer-right">
+    ADS-B gögn · RTL-SDR 1090 móttakari. Keyrt á Raspberry Pi 4.
+  </div>
+</footer>
 
   </div>
   <!-- Aircraft Detail Panel -->
