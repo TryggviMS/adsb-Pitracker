@@ -334,23 +334,32 @@ def aircraft_detail(hex):
                 cur.execute(
                     """
                     WITH src AS (
-                        SELECT hex, category FROM public.aircraft_paths_history
-                        WHERE hex = %(hex)s AND category IS NOT NULL
+                        SELECT hex, flight, category, end_time
+                        FROM public.aircraft_paths_history
+                        WHERE hex = %(hex)s
+
                         UNION ALL
-                        SELECT hex, category FROM public.aircraft_paths_live
-                        WHERE hex = %(hex)s AND category IS NOT NULL
-                        LIMIT 1
+
+                        SELECT hex, flight, category, last_seen AS end_time
+                        FROM public.aircraft_paths_live
+                        WHERE hex = %(hex)s
+                    ),
+                    best AS (
+                        SELECT DISTINCT ON (hex) hex, flight, category
+                        FROM src
+                        ORDER BY hex,
+                                end_time DESC NULLS LAST  -- most recent flight wins
                     )
                     SELECT
-                        src.hex,
-                        NULL::text AS flight,
-                        src.category,
-                        NULL::double precision AS lat,
-                        NULL::double precision AS lon,
-                        NULL::text AS alt_baro,
-                        NULL::double precision AS track,
-                        NULL::timestamptz AS last_seen,
-                        NULL::jsonb AS data,
+                        best.hex,
+                        best.flight,
+                        best.category,
+                        NULL::double precision  AS lat,
+                        NULL::double precision  AS lon,
+                        NULL::text              AS alt_baro,
+                        NULL::double precision  AS track,
+                        NULL::timestamptz       AS last_seen,
+                        NULL::jsonb             AS data,
                         r.registration,
                         r.manufacturername,
                         r.model,
@@ -365,9 +374,9 @@ def aircraft_detail(hex):
                         r.engines,
                         c.description_en,
                         c.description_is
-                    FROM src
-                    LEFT JOIN aircraft_registry r ON r.icao24 = src.hex
-                    LEFT JOIN aircraft_categories c ON c.code = src.category
+                    FROM best
+                    LEFT JOIN aircraft_registry r ON r.icao24 = best.hex
+                    LEFT JOIN aircraft_categories c ON c.code = best.category
                     """,
                     {"hex": hex.lower()},
                 )
