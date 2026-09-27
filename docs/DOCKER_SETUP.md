@@ -39,13 +39,16 @@ Verify all containers are on the network:
 
 ### Run Container
 
+cd ~/Documents/adsb-Pitracker
+
 sudo docker run -d \
   --name dump1090 \
   --restart unless-stopped \
   --privileged \
   --device /dev/bus/usb:/dev/bus/usb \
   -p 8080:8080 \
-  -v $(pwd)/web/static/data:/data \
+  -p 30005:30005 \
+  -v "$(pwd)/web/static/data:/data" \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
   dump1090-fa-arm64:latest
