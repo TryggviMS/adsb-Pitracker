@@ -17,6 +17,8 @@
 </head>
 
 <body>
+    <div id="dev-marker">DEV</div>
+
   <div id="app">
 
     <header id="header">
@@ -190,6 +192,15 @@
     updateStats();
     setInterval(updateStats, 30000);
   </script>
+  <script>
+  const isDev =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  if (!isDev) {
+    document.getElementById("dev-marker")?.remove();
+  }
+</script>
 
 </body>
 
